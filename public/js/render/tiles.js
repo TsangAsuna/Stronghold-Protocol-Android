@@ -716,7 +716,7 @@ export class TileField {
     this._drawRoutes();
   }
 
-  /** 官方样式的路线显示：细红线全程 + 方块粒子流动；一次性（淡入→流动→淡出，~2 s）。 */
+  /** 官方样式的路线显示：微光底线 + 亮段沿路径蠕动（蚂蚁线），一次性（淡入→蠕动→淡出，~2 s）。 */
   _drawRoutes() {
     const g = this.routeGfx;
     g.clear();
@@ -727,35 +727,36 @@ export class TileField {
     if (T > LIFE) { this.routeSweepT0 = null; g.clear(); return; }
     const alpha = T < FADE_IN ? T / FADE_IN : T > FADE_IN + HOLD ? 1 - (T - FADE_IN - HOLD) / FADE_OUT : 1;
     const RED = COLORS.gateRed, w = Math.max(1.5, this._p.s / 64 * 2.2);
-    const corners = (path) => {
-      const pts = [];
-      for (const n of path.nodes) if (!pts.length || pts[pts.length - 1].r !== n.r0 || pts[pts.length - 1].c !== n.c0) pts.push([n.r0, n.c0]);
-      const last = path.nodes[path.nodes.length - 1];
-      pts.push([last.r1, last.c1]);
-      return pts;
-    };
+    const DASH = 0.8, GAP = 0.9, FLOW = 2.6; // 蠕动速度（格/秒）
     for (const path of this.routePaths) {
-      // 细红线全程
-      g.lineStyle(w, RED, 0.6 * alpha);
+      const corners = [];
+      for (const n of path.nodes) if (!corners.length || corners[corners.length - 1].r !== n.r0 || corners[corners.length - 1].c !== n.c0) corners.push([n.r0, n.c0]);
+      corners.push([path.nodes[path.nodes.length - 1].r1, path.nodes[path.nodes.length - 1].c1]);
+      // 微光底线（弱）：指出路线全程
+      g.lineStyle(w * 0.45, RED, 0.28 * alpha);
       let first = true;
-      for (const [r, c] of corners(path)) {
+      for (const [r, c] of corners) {
         cam.project(c, r, this.heightAt(r, c) + 0.06, first ? p : q);
         if (first) g.moveTo(p.x, p.y); else g.lineTo(q.x, q.y);
         first = false;
       }
-      // 方块粒子沿线流动
-      for (const dot of path.dots) {
-        const prog = (T * dot.sp + dot.phase) % 1;
-        let at = prog * path.total;
-        let seg = path.nodes[0];
-        for (const sN of path.nodes) { if (at >= sN.at) seg = sN; else break; }
-        const k = seg.d > 0 ? (at - seg.at) / seg.d : 0;
-        const r = seg.r0 + (seg.r1 - seg.r0) * k, c = seg.c0 + (seg.c1 - seg.c0) * k;
-        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, q);
-        const size = w * 1.1;
-        g.beginFill(0xff6a5a, 0.9 * alpha);
-        g.drawRect(q.x - size / 2, q.y - size / 2, size, size);
-        g.endFill();
+      // 亮段蠕动：虚线沿路径流动（引导视线从红门到蓝门）
+      let dist = 0, last = null;
+      for (const nd of path.nodes) {
+        const steps = Math.max(1, Math.round(nd.d / 0.2));
+        for (let i = 0; i < steps; i++) {
+          const k = i / steps;
+          const r = nd.r0 + (nd.r1 - nd.r0) * k, c = nd.c0 + (nd.c1 - nd.c0) * k;
+          cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.06, q);
+          const inDash = ((dist + T * FLOW) % (DASH + GAP)) < DASH;
+          if (inDash && last) {
+            g.lineStyle(w * (0.55 + 0.45 * ((dist % (DASH + GAP)) / DASH)), RED, 0.8 * alpha);
+            g.moveTo(last.x, last.y);
+            g.lineTo(q.x, q.y);
+          }
+          last = { x: q.x, y: q.y };
+          dist += 0.2;
+        }
       }
     }
   }

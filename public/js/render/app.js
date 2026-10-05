@@ -1668,6 +1668,7 @@ export async function createFieldView(host, options = {}) {
       if (!v) v = battleView(id) || createUnknown(id, s);
       if (!v) continue;
       if (!v._seen) { v._seen = true; v.fadeIn = 0; }
+      if (v._landingHold > performance.now()) continue; // the battle-open deploy clip plays undisturbed
       if (v.alive || v.info?.kind === 'device') v.sync(s, renderT);
       else if (v.dying > 0) { v.x = s.x; v.y = s.y; }
       else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }

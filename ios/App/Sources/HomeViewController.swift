@@ -215,7 +215,9 @@ final class HomeViewController: UIViewController {
                 return
             }
 
-            let port = NodeRuntime.freePort(3000)
+            // prefer the last successful port so browser addresses stay valid
+            let preferred = (prefs.object(forKey: "last_port") as? Int) ?? 3000
+            let port = NodeRuntime.freePort(preferred)
             DebugLog.i("host", "host flow started (port=\(port))")
             let state = NodeRuntime.shared.ensureStarted(root: NodeRuntime.documentsNodeRoot, port: port)
             var pollPort = port
@@ -224,6 +226,7 @@ final class HomeViewController: UIViewController {
             NodeRuntime.shared.awaitHealthy(port: pollPort, timeoutMs: 20_000) { ok in
                 DispatchQueue.main.async {
                     if ok {
+                        self.prefs.set(pollPort, forKey: "last_port")
                         self.setBusy(false, "服务器运行中 · 端口 \(pollPort)")
                         self.enterHosting(port: pollPort)
                     } else {

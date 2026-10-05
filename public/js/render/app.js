@@ -1431,13 +1431,16 @@ export async function createFieldView(host, options = {}) {
     // (meta.routes, this round's real batch routes) sweeps once at the same moment.
     landingPlan = null;
     landingFired = false;
+    console.warn('[landing] enterBattle prep=' + meta.prep + ' routes=' + JSON.stringify(meta.routes ?? null).slice(0, 160) + ' units=' + JSON.stringify((meta.units ?? []).map((u) => [u.id, u.side, u.kind]).slice(0, 8)));
     if (meta.prep !== true && Array.isArray(meta.units)) {
       const own = meta.units.filter((u) => u && u.side === 'ally' && u.kind !== 'device' && u.id != null);
+      console.warn('[landing] own units: ' + JSON.stringify(own.map((u) => u.id)));
       if (own.length) landingPlan = { ids: own.map((u) => u.id), at: performance.now() };
     }
     try {
       tiles.buildRoutes(meta.routes);
       board3d?.buildRoutes(meta.routes);
+      console.warn('[landing] routePaths=' + tiles.routePaths.length);
     } catch (e) { console.warn('route build failed', e); }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
@@ -1706,6 +1709,7 @@ export async function createFieldView(host, options = {}) {
         plan.ids.forEach((id, i) => {
           setTimeout(() => {
             const vv = views.get(id);
+            console.warn('[landing] fire ' + id + ' view=' + !!vv + ' alive=' + (vv && vv.alive) + ' down=' + (vv && vv.down));
             if (!vv || !vv.alive || vv.down) return;
             vv.onDeploy?.(); // visual deploy clip only — the SFX already played via announceDeploy
           }, 250 + i * 110);

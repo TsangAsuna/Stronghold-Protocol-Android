@@ -857,27 +857,11 @@ export async function createFieldView(host, options = {}) {
     tiles.setStage(st);
     tiles.setBattleRect(mode === 'battle' && battleMeta ? battleMeta.rect : null);
     if (board3d) { board3d.setStage(st); board3d.setBattleRect(mode === 'battle' && battleMeta ? battleMeta.rect : null); }
-    updateRoutes();
     tiles.project(cam, true);
     // a pen laid out before the stage arrived (setPrep / a scouting board first) used the default zones and the old
     // tile heights: lay it out again on this stage
     if (penList) { const l = penList; clearPen(); setPenList(l); }
     return true;
-  }
-
-  /** 下一轮怪批次（penList 的 start 出生点）对应的路线流光；没有批次数据时画全部路线。 */
-  function updateRoutes() {
-    if (!stageRec) return;
-    let starts = null;
-    if (Array.isArray(penList) && penList.length) {
-      starts = new Set();
-      for (const e of penList) {
-        if (e && Array.isArray(e.start)) starts.add(`${e.start[0]},${e.start[1]}`);
-      }
-      if (!starts.size) starts = null;
-    }
-    tiles.setRoutes(stageRec, starts);
-    board3d?.setRoutes(stageRec, starts);
   }
 
   // ---- views ----------------------------------------------------------------------------------------------
@@ -1079,8 +1063,6 @@ export async function createFieldView(host, options = {}) {
     clearPen();
     penSig = sig;
     penList = sig ? list : null;
-    // 下一轮怪批次的出生点 → 只画这些批次会走的路线流光（官方红门能量线）
-    updateRoutes();
     if (!sig) return;
     // the leader with a spawn tile stands on the boss field (setLeader), not in the pen
     const stand = leaderStand(list, (k) => data.enemy(k)?.hitArea ?? null, hitTiles);
@@ -1458,6 +1440,12 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
+    // 本局批次路线（开战消息自带 meta.routes，每条对应官方的怪批次）：
+    // 2D/3D 各自构建，战斗开场时随"干员一个个落地"播放一次性的红色电流扫过
+    try {
+      tiles.buildRoutes(meta.routes);
+      board3d?.buildRoutes(meta.routes);
+    } catch (e) { console.warn('route build failed', e); }
     // 准备就绪 → 开战的"再次落地"：记录本方在棋盘上的单位，首个战斗帧渲染后
     // 逐个补发部署动画（官方行为——干员一个个落地；interp 的 redeployed() 在
     // 没有前序帧的首帧上永远不触发，所以这里手动补）
@@ -1702,12 +1690,14 @@ export async function createFieldView(host, options = {}) {
       else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }
     }
     // the one-by-one landing after 准备就绪 (see enterBattle): let the first frame settle,
-    // then play each operator's deploy clip + landing ring in sequence
+    // then play each operator's deploy clip + landing ring in sequence, with the
+    // route current sweeping the field at the same moment
     if (landingPlan && !landingFired) {
       landingFired = true;
       const plan = landingPlan;
       landingPlan = null;
       if (performance.now() - plan.at < 3000) {
+        try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
         plan.ids.forEach((id, i) => {
           setTimeout(() => {
             const vv = views.get(id);

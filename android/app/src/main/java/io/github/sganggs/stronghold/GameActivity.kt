@@ -167,16 +167,21 @@ class GameActivity : AppCompatActivity() {
         }
     }
 
-    /** First-run UI clearance for irregular screens: distance to each side, in px. */
+    /** Irregular-screen clearance: scale the whole game uniformly so it fits between the side
+        insets — everything (text included) shrinks with it, nothing is cropped. */
     private fun applyEdgePadding() {
         val px = prefs.getInt(P_EDGE_PADDING, 0)
-        if (px <= 0) return
-        (webView.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-            lp.leftMargin = px
-            lp.rightMargin = px
-            webView.layoutParams = lp
+        webView.post {
+            val w = webView.width.toFloat()
+            if (w <= 0f) return@post
+            if (px <= 0) { webView.scaleX = 1f; webView.scaleY = 1f; webView.translationX = 0f; return@post }
+            val k = ((w - 2f * px) / w)
+            webView.pivotX = w / 2f
+            webView.pivotY = webView.height / 2f
+            webView.scaleX = k
+            webView.scaleY = k
+            webView.translationX = 0f
         }
-        DebugLog.i("webview", "edge padding applied: ${px}px each side")
     }
 
     // ------------------------------------------------------- boot watchdog (2D fallback)
@@ -259,7 +264,7 @@ class GameActivity : AppCompatActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) immersive()
+        if (hasFocus) { immersive(); applyEdgePadding() }
     }
 
     override fun onDestroy() {

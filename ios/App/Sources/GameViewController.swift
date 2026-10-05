@@ -150,14 +150,17 @@ final class GameViewController: UIViewController {
     }
     // ------------------------------------------------------- irregular screens
 
-    /** User-tunable clearance so game UI keeps clear of notches (px per side). */
-    private var edgePadding: Int { UserDefaults.standard.integer(forKey: "edge_padding_px") }
-
+    /** Irregular-screen clearance: uniform scale so the whole game fits between the side insets. */
     private func applyEdgePadding() {
-        let px = edgePadding
-        guard px > 0 else { return }
-        webView.frame = view.bounds.insetBy(dx: CGFloat(px), dy: 0)
-        DebugLog.i("webview", "edge padding applied: \(px)px each side")
+        let px = CGFloat(UserDefaults.standard.integer(forKey: "edge_padding_px"))
+        guard px > 0, webView.bounds.width > 0 else { webView.transform = .identity; return }
+        let k = (webView.bounds.width - 2 * px) / webView.bounds.width
+        webView.transform = CGAffineTransform(scaleX: k, y: k)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyEdgePadding()
     }
 
     override func viewDidLayoutSubviews() {

@@ -1434,9 +1434,11 @@ export async function createFieldView(host, options = {}) {
     // the own units come from the FIRST battle frame's views, not meta.units: the server sends
     // the field meta before the sim has deployed the prep board, so units there is empty
     if (meta.prep !== true) landingPlan = { at: performance.now() };
+    console.warn('[landing] enterBattle routes=' + ((meta.routes || []).length) + ' prep=' + meta.prep);
     try {
       tiles.buildRoutes(meta.routes);
       board3d?.buildRoutes(meta.routes);
+      console.warn('[landing] built routePaths=' + tiles.routePaths.length);
     } catch (e) { console.warn('route build failed', e); }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
@@ -1703,9 +1705,12 @@ export async function createFieldView(host, options = {}) {
       landingPlan = null;
       if (performance.now() - plan.at < 3000) {
         // allies visible on the first battle frame = the operators carried over from the prep board
-        const allies = [...views.values()].filter((vv) => vv.alive && !vv.down && vv.onDeploy);
+        const all = [...views.values()];
+        console.warn('[landing] fire-check: views=' + all.length + ' allies=' + all.filter((vv) => vv.alive && !vv.down && vv.onDeploy).length + ' T=' + (performance.now() - plan.at).toFixed(0));
+        const allies = all.filter((vv) => vv.alive && !vv.down && vv.onDeploy);
         allies.forEach((vv, i) => {
           setTimeout(() => {
+            console.warn('[landing] clip ' + i);
             if (!vv.alive || vv.down) return;
             vv._landingHold = performance.now() + 700; // hold the sim-sync override while the clip plays
             vv.onDeploy?.();

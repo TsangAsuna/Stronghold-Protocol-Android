@@ -16,14 +16,9 @@ settings:
     CODE_SIGNING_ALLOWED: NO               # 未签名构建（TrollStore 直装 / 其他工具重签）
     ENABLE_BITCODE: NO
     OTHER_LDFLAGS:
-      - "-lnode"
-      - "-lc++"
       - "-lz"
-      - "-liconv"
-    LIBRARY_SEARCH_PATHS:
-      - "$(SRCROOT)/third_party/libnode"
     HEADER_SEARCH_PATHS:
-      - "$(SRCROOT)/third_party/libnode/include"
+      - "$(SRCROOT)/third_party/include"
 
 targets:
   StrongholdProtocol:
@@ -32,12 +27,16 @@ targets:
     sources:
       - path: App/Sources
       # node headers are for the C++ shim only — never compiled into the target
-      - path: third_party/libnode/include
+      - path: third_party/include
         buildPhase: none
       # folder reference (blue): the whole game ships verbatim into the bundle
       - path: Resources/nodejs-project
         buildPhase: resources
         type: folder
+    dependencies:
+      # dynamic framework shipping node::Start (device + simulator slices)
+      - framework: third_party/NodeMobile.xcframework
+        embed: true
     info:
       path: App/Info.plist
       properties:

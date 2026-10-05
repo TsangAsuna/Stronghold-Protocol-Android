@@ -36,18 +36,14 @@ function extractZip(zipPath, dest) {
   }
 }
 
-function findLibnode(dir) {
-  // the release layout has varied across versions — accept static archives,
-  // dylibs and framework/xcframework binaries for the device (non-simulator) slice
+function findXcframework(dir) {
   const hits = [];
   const walk = (d) => {
     for (const name of readdirSync(d)) {
       const full = join(d, name);
-      const st = statSync(full);
-      if (st.isDirectory()) {
-        walk(full);
-      } else if (/libnode/i.test(name) && !/simulator|x86_64|iphonesimulator/i.test(full)) {
-        if (/\.(a|dylib)$/.test(name) || /framework/i.test(full)) hits.push(full);
+      if (statSync(full).isDirectory()) {
+        if (/\.xcframework$/i.test(name)) hits.push(full);
+        else walk(full);
       }
     }
   };
@@ -70,12 +66,13 @@ function printTree(dir, depth = 3) {
 
 function ensureLibnode() {
   const out = join(THIRD, 'libnode');
-  if (existsSync(join(out, 'libnode.a')) && existsSync(join(out, 'include', 'node.h')) && !FORCE) {
+  if (existsSync(join(THIRD, 'NodeMobile.xcframework')) && existsSync(join(THIRD, 'include', 'node.h')) && !FORCE) {
     console.log('[libnode-ios] already present, skipping');
     return;
   }
+  rmSync(join(THIRD, 'NodeMobile.xcframework'), { recursive: true, force: true });
+  rmSync(join(THIRD, 'include'), { recursive: true, force: true });
   rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
 
   let src = join(THIRD, `nodejs-mobile-v${VERSION}-ios`);
   const zipPath = join(THIRD, `nodejs-mobile-v${VERSION}-ios.zip`);
@@ -99,23 +96,19 @@ function ensureLibnode() {
     }
   }
 
-  const lib = findLibnode(src);
-  if (!lib) {
-    console.error(`[libnode-ios] 未找到 libnode，解压树如下（${src}）：`);
+  const fw = findXcframework(src);
+  if (!fw) {
+    console.error(`[libnode-ios] 未找到 xcframework，解压树如下（${src}）：`);
     printTree(src, 4);
-    throw new Error('libnode 静态库未找到');
+    throw new Error('NodeMobile.xcframework 未找到');
   }
-  console.log(`[libnode-ios] found: ${lib}`);
-  cpSync(lib, join(out, 'libnode.a'));
+  console.log(`[libnode-ios] found: ${fw}`);
+  cpSync(fw, join(THIRD, 'NodeMobile.xcframework'), { recursive: true });
 
-  // headers: zip ships include/node/*.h — flatten to include/*.h for a single search path
-  const incFrom = join(src, 'include', 'node');
-  const incTo = join(out, 'include');
-  mkdirSync(incTo, { recursive: true });
-  cpSync(incFrom, incTo, { recursive: true });
+  // headers: zip ships include/node/*.h — flatten to third_party/include
+  cpSync(join(src, 'include', 'node'), join(THIRD, 'include'), { recursive: true });
 
-  const sha = createHash('sha256').update(readFileSync(join(out, 'libnode.a'))).digest('hex');
-  console.log(`[libnode-ios] libnode.a ${(statSync(join(out, 'libnode.a')).size / 1048576).toFixed(0)} MB sha256=${sha.slice(0, 16)}…`);
+  console.log(`[libnode-ios] NodeMobile.xcframework + headers staged`);
 }
 
 function copyResources() {

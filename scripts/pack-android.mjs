@@ -224,26 +224,9 @@ function syncLibnode() {
     copyDir(join(src, 'include', 'node'), join(CPP_INCLUDE, 'node'));
     console.log('[libnode] headers copied');
   }
-  syncStl();
-}
-
-/** libnode.so links the NDK's shared C++ runtime — ship libc++_shared.so next to it. */
-function syncStl() {
-  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
-  if (!sdk) throw new Error('ANDROID_HOME 未设置，无法定位 NDK 的 libc++_shared.so');
-  const ndkRoot = join(sdk, 'ndk');
-  const versions = existsSync(ndkRoot) ? readdirSync(ndkRoot).sort().reverse() : [];
-  if (!versions.length) throw new Error('未找到 NDK（$ANDROID_HOME/ndk/*）');
-  const sysroot = join(ndkRoot, versions[0], 'toolchains', 'llvm', 'prebuilt',
-    process.platform === 'win32' ? 'windows-x86_64' : process.platform === 'darwin' ? 'darwin-x86_64' : 'linux-x86_64',
-    'sysroot', 'usr', 'lib');
-  for (const [abi, triple] of [['arm64-v8a', 'aarch64-linux-android'], ['x86_64', 'x86_64-linux-android']]) {
-    const from = join(sysroot, triple, 'libc++_shared.so');
-    const to = join(JNILIBS, abi, 'libc++_shared.so');
-    mkdirSync(join(JNILIBS, abi), { recursive: true });
-    copyFileSync(from, to);
-    console.log(`[stl] ${abi}: libc++_shared.so (${versions[0]})`);
-  }
+  // libc++_shared.so is NOT copied here: the app's CMake build uses
+  // ANDROID_STL=c++_shared, so the Gradle plugin packages the NDK runtime itself
+  // (duplicating it in jniLibs fails mergeDebugNativeLibs with "2 files found").
 }
 
 function copyDir(from, to) {

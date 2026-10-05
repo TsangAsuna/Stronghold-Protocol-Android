@@ -156,7 +156,6 @@ final class HomeViewController: UIViewController {
         urlLabel.text = "本机地址：\n" + lan.joined(separator: "\n")
         DebugLog.i("host", "hosting info refreshed: \(lan)")
     }
-    }
 
     private func styleButton(_ b: UIButton, filled: Bool) {
         b.titleLabel?.font = .boldSystemFont(ofSize: 16)

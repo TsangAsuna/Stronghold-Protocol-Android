@@ -13,6 +13,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write # create the GitHub Release and attach the APK
+
 jobs:
   apk:
     runs-on: ubuntu-latest

@@ -13,6 +13,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write # create the GitHub Release and attach the unsigned ipa
+
 jobs:
   ipa:
     runs-on: macos-14

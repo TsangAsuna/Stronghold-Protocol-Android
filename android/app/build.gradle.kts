@@ -13,6 +13,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.3"
+        ndkVersion = "27.0.12077973"
 
         // arm64-v8a: modern phones (incl. the target Android 16 devices)
         // x86_64: desktop emulators. armeabi-v7a can be added in local builds.

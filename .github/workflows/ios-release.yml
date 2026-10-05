@@ -43,17 +43,18 @@ jobs:
       - name: Build unsigned .app (iOS device, arm64)
         working-directory: ios
         run: |
+          # -target builds reject -derivedDataPath; SYMROOT puts products in ./build
           xcodebuild -project StrongholdProtocol.xcodeproj \
             -target StrongholdProtocol \
             -sdk iphoneos -configuration Release \
             CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            -derivedDataPath build
+            SYMROOT="$(pwd)/build"
 
       - name: Package unsigned .ipa
         run: |
           VERSION=$(node -p "require('./package.json').version")
           SHORTSHA=$(git rev-parse --short HEAD)
-          APP=$(find ios/build/Build/Products -maxdepth 3 -name "*.app" | head -1)
+          APP=$(find ios/build -name "*.app" -path "*Release-iphoneos*" | head -1)
           test -n "$APP" || { echo "no .app produced"; exit 1; }
           rm -rf Payload "Stronghold-Protocol-iOS-v${VERSION}-${SHORTSHA}-unsigned.ipa"
           mkdir Payload

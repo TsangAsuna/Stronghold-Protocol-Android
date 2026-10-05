@@ -253,6 +253,8 @@ export class TileField {
     this.devBoxes = [];            // textured box props (in the row meshes) { dev, row, col, role }
     this.blowers = [];             // { dev, row, col, dir } airflow sources
     this.animSprites = [];         // { sprite, r, c, kind, phase }
+    this.routeDots = [];           // 怪物路线流光 { sprite, seg, total, phase, sp }（见 setRoutes）
+    this._routeStarts = null;      // 下一轮怪批次的出生点集合（"r,c"）；null = 画全部路线
     this.battleRect = null;
     this.cam = null;
     this.camVersion = -1;
@@ -327,7 +329,49 @@ export class TileField {
 
   setStage(stage) {
     this.stage = stage || null;
+    this.setRoutes(this.stage, this._routeStarts);
     this._rebuild();
+  }
+
+  /**
+   * 怪物行进路线流光（官方的红门→蓝门能量线）：stage.groundPaths 是
+   * "r,c->r,c" → 逐格路径；activeStarts 是下一轮怪批次的出生点集合
+   * （来自 nextEnemies 的 start）——只画这一局怪批次会走的路线，
+   * null = 全画。路径上的流动光点从红渐变到蓝。
+   */
+  setRoutes(stage, activeStarts = null) {
+    this._routeStarts = activeStarts;
+    for (const d of this.routeDots) d.sprite.destroy();
+    this.routeDots = [];
+    if (!stage || !stage.groundPaths) return;
+    const paths = [];
+    for (const [key, pts] of Object.entries(stage.groundPaths)) {
+      if (!Array.isArray(pts) || pts.length < 2) continue;
+      if (activeStarts && !activeStarts.has(key.split('->')[0])) continue;
+      paths.push(pts);
+    }
+    if (!paths.length) return;
+    const fx = fxAtlas();
+    const R = rng(20261006);
+    for (const pts of paths) {
+      const seg = [];
+      let total = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [r0, c0] = pts[i];
+        const [r1, c1] = pts[i + 1];
+        const d = Math.abs(r1 - r0) + Math.abs(c1 - c0);
+        seg.push({ r0, c0, r1, c1, at: total, d });
+        total += d;
+      }
+      const n = Math.max(3, Math.min(14, Math.round(total / 1.5)));
+      for (let i = 0; i < n; i++) {
+        const s = new P.Sprite(fx.tex.glow);
+        s.anchor.set(0.5);
+        s.blendMode = P.BLEND_MODES.ADD;
+        this.animLayer.addChild(s);
+        this.routeDots.push({ sprite: s, seg, total, phase: i / n, sp: 0.09 + R() * 0.02 });
+      }
+    }
   }
 
   _rebuild() {
@@ -707,6 +751,29 @@ export class TileField {
       }
     }
     for (let i = this.flashes.length - 1; i >= 0; i--) { this.flashes[i].t += dt; if (this.flashes[i].t > 1.2) this.flashes.splice(i, 1); }
+    // 路线流光：光点沿路径滑行、正弦淡入淡出（不留下完整轨迹线），颜色从红门渐变到蓝门
+    if (this.routeDots.length && this.cam) {
+      const p = this._p;
+      const CR = ((COLORS.gateRed >> 16) & 0xff) / 255, CG = ((COLORS.gateRed >> 8) & 0xff) / 255, CB0 = (COLORS.gateRed & 0xff) / 255;
+      const BR = ((COLORS.objBlue >> 16) & 0xff) / 255, BG = ((COLORS.objBlue >> 8) & 0xff) / 255, BB = (COLORS.objBlue & 0xff) / 255;
+      for (const d of this.routeDots) {
+        const prog = (this.time * d.sp + d.phase) % 1;
+        let at = prog * d.total;
+        let seg = d.seg[0];
+        for (const s of d.seg) { if (at >= s.at) seg = s; else break; }
+        const k = seg.d > 0 ? (at - seg.at) / seg.d : 0;
+        const r = seg.r0 + (seg.r1 - seg.r0) * k;
+        const c = seg.c0 + (seg.c1 - seg.c0) * k;
+        const tile = this.tile(Math.round(r), Math.round(c));
+        const z = (tile.h || 0) + 0.06;
+        this.cam.project(c, r, z, p);
+        const fade = Math.sin(prog * Math.PI);
+        d.sprite.position.set(p.x, p.y);
+        d.sprite.scale.set((p.s / 128) * (0.5 + 0.35 * fade));
+        d.sprite.alpha = 0.55 * fade;
+        d.sprite.tint = (((CR + (BR - CR) * prog) * 255) << 16) | (((CG + (BG - CG) * prog) * 255) << 8) | (((CB0 + (BB - CB0) * prog) * 255) & 0xff);
+      }
+    }
     this._drawBoxes();
     this._drawFlow();
   }
@@ -776,9 +843,11 @@ export class TileField {
   destroy() {
     for (const d of this.devices) d.gfx.destroy();
     for (const a of this.animSprites) a.sprite.destroy();
+    for (const d of this.routeDots) d.sprite.destroy();
     for (const b of [...this.boxMeshes]) b.destroy();
     this.devices = [];
     this.animSprites = [];
+    this.routeDots = [];
     for (const m of this.meshes) m.mesh.destroy();
     for (const s of this.rowSurfaces.values()) this._freeSurface(s);
     this.meshes = []; this.rowMeshes.clear(); this.rowSurfaces.clear(); this.mesh = null; this.plane = null;

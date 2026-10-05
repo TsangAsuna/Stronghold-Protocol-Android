@@ -237,7 +237,51 @@ export class BoardScene {
       this.root.remove(ch);
       ch.traverse?.((o) => { if (o.geometry) o.geometry.dispose(); });
     }
+    if (this.routePoints) { this.routePoints = null; this.routeData = null; }
     this.meshes = {};
+  }
+
+  /**
+   * 怪物行进路线流光（3D 棋盘）：stage.groundPaths 的 "r,c->r,c" → 逐格路径，
+   * activeStarts = 下一轮怪批次出生点集合（只画本局怪批次走的路线，null = 全画）。
+   * 加色红光点沿路径滑行、正弦淡入淡出——不留下完整轨迹线。
+   */
+  setRoutes(stage, activeStarts = null) {
+    this._routeStarts = activeStarts;
+    if (this.routePoints) { this.root.remove(this.routePoints); this.routePoints.geometry.dispose(); this.routePoints.material.dispose(); this.routePoints = null; this.routeData = null; }
+    if (!stage || !stage.groundPaths || this.destroyed) return;
+    const paths = [];
+    for (const [key, pts] of Object.entries(stage.groundPaths)) {
+      if (!Array.isArray(pts) || pts.length < 2) continue;
+      if (activeStarts && !activeStarts.has(key.split('->')[0])) continue;
+      paths.push(pts);
+    }
+    if (!paths.length) return;
+    const dots = [];
+    for (const pts of paths) {
+      const seg = [];
+      let total = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [r0, c0] = pts[i];
+        const [r1, c1] = pts[i + 1];
+        const d = Math.abs(r1 - r0) + Math.abs(c1 - c0);
+        seg.push({ r0, c0, r1, c1, at: total, d });
+        total += d;
+      }
+      const n = Math.max(3, Math.min(14, Math.round(total / 1.5)));
+      for (let i = 0; i < n; i++) dots.push({ seg, total, phase: i / n, sp: 0.09 + Math.random() * 0.02 });
+    }
+    const T = this.THREE;
+    const geo = new T.BufferGeometry();
+    const pos = new Float32Array(dots.length * 3);
+    const col = new Float32Array(dots.length * 3);
+    geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new T.BufferAttribute(col, 3));
+    const mat = new T.PointsMaterial({ size: 0.5, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true });
+    this.routePoints = new T.Points(geo, mat);
+    this.routePoints.frustumCulled = false;
+    this.root.add(this.routePoints);
+    this.routeData = { dots, pos, col };
   }
 
   /** The crate mesh in board space (s_common_box_01 when loaded, else a unit chamfer-free box), UVs on D. */
@@ -272,6 +316,7 @@ export class BoardScene {
     this.stageKey = key;
     this.stage = stage || null;
     this._clear();
+    this.setRoutes(stage, this._routeStarts ?? null);
     if (!stage) return;
     const board = buildBoard(stage, { uv: this.pack?.uv || null, area: this.area });
     this.board = board;
@@ -550,6 +595,27 @@ export class BoardScene {
     for (let i = this.flashes.length - 1; i >= 0; i--) { const f = this.flashes[i]; f.t += dt; if (f.t > 1.2) this.flashes.splice(i, 1); else flash = Math.max(flash, 1 - f.t / 1.2); }
     for (const m of [this.mat.gateEndAdd, this.mat.gateEndAb]) if (m) m.uniforms.uFlash.value.setRGB(flash, flash * 0.12, flash * 0.1);
     for (const k of ['water', 'mire', 'infection', 'smog']) this.mat[k].uniforms.uTime.value = t;
+    // 路线流光（红）：光点沿路径滑行、正弦淡入淡出，不留下完整轨迹
+    if (this.routePoints && this.routeData) {
+      const { dots, pos, col } = this.routeData;
+      for (let i = 0; i < dots.length; i++) {
+        const d = dots[i];
+        const prog = (t * d.sp + d.phase) % 1;
+        let at = prog * d.total;
+        let seg = d.seg[0];
+        for (const s of d.seg) { if (at >= s.at) seg = s; else break; }
+        const k = seg.d > 0 ? (at - seg.at) / seg.d : 0;
+        pos[i * 3] = seg.c0 + (seg.c1 - seg.c0) * k;
+        pos[i * 3 + 1] = seg.r0 + (seg.r1 - seg.r0) * k;
+        pos[i * 3 + 2] = 0.12;
+        const fade = Math.sin(prog * Math.PI) * 0.75;
+        col[i * 3] = 1.0 * fade;
+        col[i * 3 + 1] = 0.35 * fade;
+        col[i * 3 + 2] = 0.29 * fade;
+      }
+      this.routePoints.geometry.attributes.position.needsUpdate = true;
+      this.routePoints.geometry.attributes.color.needsUpdate = true;
+    }
     this.renderer.render(this.scene, this.camera);
     this.frames++;
     if (t0) this.lastMs = this.lastMs * 0.9 + ((typeof performance !== 'undefined' ? performance.now() : t0) - t0) * 0.1;

@@ -857,11 +857,27 @@ export async function createFieldView(host, options = {}) {
     tiles.setStage(st);
     tiles.setBattleRect(mode === 'battle' && battleMeta ? battleMeta.rect : null);
     if (board3d) { board3d.setStage(st); board3d.setBattleRect(mode === 'battle' && battleMeta ? battleMeta.rect : null); }
+    updateRoutes();
     tiles.project(cam, true);
     // a pen laid out before the stage arrived (setPrep / a scouting board first) used the default zones and the old
     // tile heights: lay it out again on this stage
     if (penList) { const l = penList; clearPen(); setPenList(l); }
     return true;
+  }
+
+  /** 下一轮怪批次（penList 的 start 出生点）对应的路线流光；没有批次数据时画全部路线。 */
+  function updateRoutes() {
+    if (!stageRec) return;
+    let starts = null;
+    if (Array.isArray(penList) && penList.length) {
+      starts = new Set();
+      for (const e of penList) {
+        if (e && Array.isArray(e.start)) starts.add(`${e.start[0]},${e.start[1]}`);
+      }
+      if (!starts.size) starts = null;
+    }
+    tiles.setRoutes(stageRec, starts);
+    board3d?.setRoutes(stageRec, starts);
   }
 
   // ---- views ----------------------------------------------------------------------------------------------
@@ -1063,6 +1079,8 @@ export async function createFieldView(host, options = {}) {
     clearPen();
     penSig = sig;
     penList = sig ? list : null;
+    // 下一轮怪批次的出生点 → 只画这些批次会走的路线流光（官方红门能量线）
+    updateRoutes();
     if (!sig) return;
     // the leader with a spawn tile stands on the boss field (setLeader), not in the pen
     const stand = leaderStand(list, (k) => data.enemy(k)?.hitArea ?? null, hitTiles);
@@ -1440,6 +1458,15 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
+    // 准备就绪 → 开战的"再次落地"：记录本方在棋盘上的单位，首个战斗帧渲染后
+    // 逐个补发部署动画（官方行为——干员一个个落地；interp 的 redeployed() 在
+    // 没有前序帧的首帧上永远不触发，所以这里手动补）
+    landingPlan = null;
+    landingFired = false;
+    if (meta.prep !== true && Array.isArray(meta.units)) {
+      const own = meta.units.filter((u) => u && u.side === 'ally' && u.kind !== 'device' && u.id != null);
+      if (own.length) landingPlan = { ids: own.map((u) => u.id), at: performance.now() };
+    }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
     battleMeta = { fieldId: meta.fieldId ?? null, kind: meta.kind || 'normal', rect, stageId: meta.stageId ?? null, prep: meta.prep === true };
@@ -1655,6 +1682,8 @@ export async function createFieldView(host, options = {}) {
   }
 
   let renderT0Battle = null;   // game time of the first rendered battle frame (spawn puffs skip the initial wave)
+  let landingPlan = null;      // units to land one-by-one when the battle opens (official re-deploy moment)
+  let landingFired = false;
   let downSeq = 0;             // syncBattle pass counter: a view still marked down after a pass left the `down` list
   function syncBattle(renderT) {
     if (renderT0Battle == null) renderT0Battle = renderT;
@@ -1671,6 +1700,23 @@ export async function createFieldView(host, options = {}) {
       if (v.alive || v.info?.kind === 'device') v.sync(s, renderT);
       else if (v.dying > 0) { v.x = s.x; v.y = s.y; }
       else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }
+    }
+    // the one-by-one landing after 准备就绪 (see enterBattle): let the first frame settle,
+    // then play each operator's deploy clip + landing ring in sequence
+    if (landingPlan && !landingFired) {
+      landingFired = true;
+      const plan = landingPlan;
+      landingPlan = null;
+      if (performance.now() - plan.at < 3000) {
+        plan.ids.forEach((id, i) => {
+          setTimeout(() => {
+            const vv = views.get(id);
+            if (!vv || !vv.alive || vv.down) return;
+            vv.onDeploy?.();
+            fx.deploy(vv);
+          }, 250 + i * 110);
+        });
+      }
     }
     // knocked-out operators waiting to redeploy (b.snap `down`, user playtest #4 item 9): their view stays on the
     // field knocked down under a redeploy ring (UnitView.setDown) — made on the spot for one already down when this

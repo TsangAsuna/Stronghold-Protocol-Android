@@ -50,14 +50,16 @@ final class GameViewController: UIViewController, WKUIDelegate {
         UIApplication.shared.isIdleTimerDisabled = false
         // suspend the game's audio when leaving (stock client exposes __SP__.audio)
         webView?.evaluateJavaScript(
-            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.suspend&&globalThis.__SP__.audio.suspend()}catch(e){}", nil)
+            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.suspend&&globalThis.__SP__.audio.suspend()}catch(e){}",
+            completionHandler: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         UIApplication.shared.isIdleTimerDisabled = true
         webView?.evaluateJavaScript(
-            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.resume&&globalThis.__SP__.audio.resume()}catch(e){}", nil)
+            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.resume&&globalThis.__SP__.audio.resume()}catch(e){}",
+            completionHandler: nil)
     }
 }
 

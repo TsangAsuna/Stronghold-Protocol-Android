@@ -1,0 +1,37 @@
+name: release-attach
+
+# 把某次运行已构建好的构件（如 ipa）附加到指定 Release —— 全程在 GitHub
+# 服务器侧完成，不经本地流量。手动触发：
+#   run_id: 源 workflow run 的 ID（其工件将被附加）
+#   tag:    目标 Release 的标签（不存在则创建）
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Source run ID whose artifacts get attached"
+        required: true
+      tag:
+        description: "Target release tag (created if missing)"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts from the source run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: "**/*.ipa"
+          fail_on_unmatched_files: true

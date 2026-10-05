@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bgmKeyFor, resolveBgm, SfxLimiter, AudioManager, normalAttackSfx } from '../../public/js/audio.js';
+import { bgmKeyFor, resolveBgm, SfxLimiter, AudioManager, normalAttackSfx, voiceKey } from '../../public/js/audio.js';
 import { mediaUrl } from '../../public/js/media.js';
 import { PHASE } from '../../shared/constants.js';
 
@@ -150,8 +150,10 @@ describe('AudioManager', () => {
       assert.ok(asked(urls, manifest.audio.bgm.prep.loop), 'BGM fetched after unlock');
       a.sfx('buy');
       a.sfx('nonexistent');
+      a.deploy({ defId: 'char_002_amiya' });
       await new Promise((r) => setTimeout(r, 10));
       assert.ok(asked(urls, manifest.audio.sfx.ui.buy));
+      assert.ok(asked(urls, manifest.audio.sfx.battle.deploy) || asked(urls, manifest.audio.sfx.units?.char_002_amiya?.born), 'operator deploy sfx played');
       // same loop URL ⇒ no restart
       const before = fw.made.started;
       a.playBgm('combat');
@@ -380,5 +382,48 @@ describe('impact sounds (user playtest #4 item 6)', () => {
       await settle();
       assert.ok(!asked(urls, manifest.audio.sfx.units[charId].hit), '4 s later: not that attack\'s impact');
     } finally { globalThis.performance = perf; restore(); }
+  });
+});
+
+describe('voice mapping and voiceKey resolution', () => {
+  test('every voice key in manifest must start with char_', () => {
+    // every voice key must be a charId that some chess record points at
+    const bad = Object.keys(manifest.audio?.voice || {}).filter((k) => !/^char_/.test(k));
+    assert.deepEqual(bad, []);
+  });
+
+  test('voiceKey handles charId, chessId, piece, unit and def objects', () => {
+    const mockGd = {
+      getChess: (id) => (id === 'p_ami_a' ? { charId: 'char_002_amiya' } : null),
+    };
+    assert.equal(voiceKey(null), null);
+    assert.equal(voiceKey('char_002_amiya'), 'char_002_amiya');
+    assert.equal(voiceKey('p_ami_a', mockGd), 'char_002_amiya');
+    assert.equal(voiceKey({ chessId: 'p_ami_a' }, mockGd), 'char_002_amiya');
+    assert.equal(voiceKey({ id: 'p_ami_a' }, mockGd), 'char_002_amiya');
+    assert.equal(voiceKey({ piece: { id: 'p_ami_a' } }, mockGd), 'char_002_amiya');
+    assert.equal(voiceKey({ charId: 'char_002_amiya' }), 'char_002_amiya');
+    assert.equal(voiceKey({ def: 'char_002_amiya' }), 'char_002_amiya');
+    assert.equal(voiceKey({ defId: 'char_002_amiya' }), 'char_002_amiya');
+    assert.equal(voiceKey({ spine: 'char_002_amiya' }), 'char_002_amiya');
+    assert.equal(voiceKey('unknown_id', mockGd), null);
+  });
+
+  test('voice method records missing voice line into warned Set', () => {
+    const a = new AudioManager({ win: null, getManifest: () => manifest });
+    a.voice('char_nonexistent_xyz');
+    assert.ok(a.warned.has('voice_missing_char_nonexistent_xyz'));
+  });
+
+  test('each operator gets its own voice cooldown slot (a row deploying at once is not muted after the first)', () => {
+    const voiced = Object.keys(manifest.audio?.voice || {}).filter((k) => /^char_/.test(k)).slice(0, 4);
+    assert.ok(voiced.length >= 3, 'need several voiced operators in the manifest');
+    const a = new AudioManager({ win: null, getManifest: () => manifest });
+    a.duckBgm = () => {};
+    const slots = [];
+    a._play = (url, o) => { slots.push(o.unitKey); return true; };
+    for (const k of voiced) a.voice(k);
+    assert.equal(new Set(slots).size, voiced.length, `one slot per operator expected, got ${slots.join(',')}`);
+    assert.ok(slots.every((s) => typeof s === 'string' && s.startsWith('voice:char_')), `slots must be keyed by operator: ${slots.join(',')}`);
   });
 });

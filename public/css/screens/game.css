@@ -7,17 +7,17 @@
 
 /* ---- screen shell ---------------------------------------------------------------------------- */
 .gm { background: transparent; }
-.gm__field { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.gm__field { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; z-index: 0; overflow: hidden; }
 .gm__field canvas { display: block; }
 .gm__vignette {
-  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; z-index: 1; pointer-events: none;
   background:
     linear-gradient(180deg, rgba(6, 9, 8, .78) 0%, rgba(6, 9, 8, 0) 18%),
     linear-gradient(0deg, rgba(6, 9, 8, .6) 0%, rgba(6, 9, 8, 0) 22%),
     radial-gradient(120% 90% at 45% 50%, transparent 60%, rgba(0, 0, 0, .5) 100%);
 }
-.gm__loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
-.gm__hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.gm__loading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
+.gm__hud { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; z-index: 3; pointer-events: none; }
 .gm__hud > * { pointer-events: auto; }
 .gload { align-items: center; justify-content: center; gap: .2rem; }
 
@@ -220,13 +220,16 @@
 .readybtn.is-busy { opacity: .7; }
 
 /* ---- bond strip ---------------------------------------------------------------------------------------- */
-.gm__bonds { position: absolute; left: 1.56rem; top: 1.36rem; right: 5.2rem; pointer-events: none; }
+/* Symmetric insets, so justify-content centres the strip on the screen. The right inset used to be 5.2rem as a
+   reserve for .gm__effects — but that column is a .5rem stack inset .3rem, one row lower (top: 2.4rem), so the
+   1.56rem inset already clears it and the extra reserve only pushed the whole strip ~1.8rem off-centre. */
+.gm__bonds { position: absolute; left: 1.56rem; top: 1.36rem; right: 1.56rem; display: flex; justify-content: center; pointer-events: none; }
 /* Only the bond discs (and the +N chip) take the pointer: the strip's box spans the width under the top bar, where the
    top board row's units stand (row 12 at 16:9 / 21:9 / 720p / phones, the boss field's row 5 in a boss prep) — it used
    to swallow the taps and drags on them (review of user playtest #2 item 8: every own unit reachable). */
 .gm__bonds > *, .gm__bonds .bstrip { pointer-events: none; }
 .gm__bonds .bslot, .gm__bonds .bstrip__more { pointer-events: auto; }
-.bstrip { display: flex; align-items: flex-start; gap: .1rem; flex-wrap: nowrap; }
+.bstrip { display: flex; align-items: flex-start; justify-content: center; gap: max(.06rem, 4px) max(.1rem, 6px); flex-wrap: wrap; }
 .bstrip.is-frozen .bslot { opacity: .5; filter: saturate(.4); }
 .bstrip--empty { display: inline-flex; align-items: center; gap: .12rem; padding: .08rem .16rem; font-size: .15rem; color: var(--text-dim); background: rgba(8, 11, 10, .6); border: 1px dashed var(--line-2); }
 /* a watched teammate's bonds (DESIGN §20.15): an amber "👁 name" pill in front of the discs, amber rings. Horizontal at
@@ -245,11 +248,17 @@
 }
 .bstrip.is-other .bond__core { box-shadow: 0 0 0 1px rgba(246, 163, 41, .45); }
 .bstrip__more { align-self: center; font-size: .16rem; color: var(--text-lo); padding: .04rem .08rem; border: 1px solid var(--line-2); background: rgba(8, 11, 10, .7); }
-.bslot { position: relative; display: flex; flex-direction: column; align-items: center; width: .74rem; }
-.bslot .bond { --disc: .52rem; }
-.bslot .bond__name { font-size: .14rem; font-weight: 500; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+/* The slot is sized by its label, not by the disc: bond names run to 4 CJK glyphs (维多利亚 / 协防干员), which at the
+   10 px phone floor measure ~40 px — a fixed 27 px box let each label spill into its neighbour's, so the names printed
+   on top of each other (user report 2026-10-04). min-width keeps the old footprint for short names, and the disc stays
+   centred by align-items. */
+.bslot { --bslot-disc: max(.52rem, 21px); position: relative; display: flex; flex-direction: column; align-items: center; min-width: max(.74rem, 27px); }
+.bslot .bond { --disc: var(--bslot-disc); }
+.bslot .bond__name { font-size: max(.16rem, 10px); font-weight: 500; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+/* Anchored to the disc's corner, not the slot's edge — the slot is now as wide as the label, so a right offset would
+   walk the counter away from the disc it counts. */
 .bslot__count {
-  position: absolute; top: -.04rem; right: .02rem; font-size: .13rem; font-weight: 700; color: var(--text-hi);
+  position: absolute; top: -.04rem; right: calc(50% - var(--bslot-disc) / 2 - 2px); font-size: .13rem; font-weight: 700; color: var(--text-hi);
   background: rgba(8, 11, 10, .92); border: 1px solid var(--line-2); padding: 0 .04rem; line-height: 1.35;
 }
 .bslot__count small { color: var(--text-dim); font-size: .11rem; }
@@ -513,8 +522,8 @@
 .awayov__box h2 { font-size: .34rem; letter-spacing: .12em; }
 
 /* ---- simplified (DOM) field view ---------------------------------------------------------------------------------------- */
-.ff { position: absolute; inset: 0; overflow: hidden; user-select: none; }
-.ff::before { content: ''; position: absolute; inset: 0; background: radial-gradient(70% 60% at 45% 48%, rgba(40, 60, 52, .35), transparent 70%); }
+.ff { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; overflow: hidden; user-select: none; }
+.ff::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; inset: 0; background: radial-gradient(70% 60% at 45% 48%, rgba(40, 60, 52, .35), transparent 70%); }
 .ff-board { position: absolute; }
 .ff-tile, .ff-slot, .ff-piece, .ff-unit { position: absolute; left: 0; top: 0; }
 .ff-tile { box-sizing: border-box; border: 1px solid rgba(0, 0, 0, .35); }
@@ -592,11 +601,6 @@
 @keyframes float-up { to { transform: translate(-50%, -.4rem); opacity: 0; } }
 .ff-badge { position: absolute; left: 50%; bottom: .08rem; transform: translateX(-50%); font-family: var(--font-display); font-size: .1rem; letter-spacing: .3em; color: var(--text-dim); opacity: .5; pointer-events: none; }
 .gm--combat .ff-badge { display: none; }
-
-/* ---- small screens (1280×720 → root ≈ 66px) ------------------------------------------------------------------------ */
-@media (max-aspect-ratio: 16/10) {
-  .gm__bonds { right: 4.6rem; }
-}
 
 /* fallback view: enemy preview pen (setCamera('pen')) */
 .ff-board--pen .ff-pen__enemy { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }

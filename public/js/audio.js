@@ -148,13 +148,32 @@ export function deathSfxUrl(manifest, info, { consumed = false, reason = null } 
 }
 
 /**
+ * Audio.js — the voice table is keyed by charId; units carry a def object, prep pieces carry a chessId.
+ * @param {any} x charId, chessId, unit object or piece object
+ * @param {any} [gd] gameData lookup handle (getChess)
+ * @returns {string|null}
+ */
+export function voiceKey(x, gd = null) {
+  if (!x) return null;
+  if (typeof x === 'string') {
+    if (x.startsWith('char_')) return x;                       // already a charId
+    const getFn = gd?.getChess || gd?.chess || (typeof gd === 'function' ? gd : null);
+    const rec = getFn ? getFn(x) : null;
+    return rec?.charId || null; // chessId -> charId
+  }
+  if (x.piece) return voiceKey(x.piece, gd);
+  return x.charId || voiceKey(x.id || x.chessId || x.defId || x.def || x.spine, gd) || null;  // def object / unit
+}
+
+/**
  * Deployment sound of an allied unit ('deploy' event): its own ON_UNIT_BORN sound, else operators b_char_set
  * (sfx.battle.deploy), summons b_char_tokenset (tokenDeploy); stage devices have none.
  * @returns {string|null}
  */
-export function deploySfxUrl(manifest, info) {
+export function deploySfxUrl(manifest, info, gd = null) {
   if (!info || info.side === 'enemy') return null;
-  const own = manifest?.audio?.sfx?.units?.[info.def]?.born;
+  const key = voiceKey(info, gd) || (typeof info.def === 'string' ? voiceKey(info.def, gd) : null) || info.def;
+  const own = (key && manifest?.audio?.sfx?.units?.[key]?.born) || (info.def && manifest?.audio?.sfx?.units?.[info.def]?.born);
   if (typeof own === 'string') return own;
   const b = manifest?.audio?.sfx?.battle ?? {};
   const cls = unitSoundClass(info);
@@ -610,6 +629,110 @@ export class AudioManager {
     } catch { return false; }
   }
 
+  /**
+   * Play the landing/deployment sound of an operator or token.
+   * Uses the unit's own born SFX if present, falling back to battle.deploy (b_char_set) or battle.tokenDeploy.
+   * @param {any} unitOrPiece piece, unit, defId, or event payload
+   * @param {any} [gd]
+   * @param {{ volume?: number }} [o]
+   */
+  deploy(unitOrPiece, gd = null, o = {}) {
+    try {
+      const m = this.getManifest();
+      const u = typeof unitOrPiece === 'string' ? { def: unitOrPiece, defId: unitOrPiece } : (unitOrPiece || {});
+      const url = deploySfxUrl(m, u, gd) || m?.audio?.sfx?.battle?.deploy || '/assets/audio/sfx/battle/b_char/b_char_set.mp3';
+      if (!url) return;
+      const key = voiceKey(u, gd) || u.defId || u.chessId || u.def;
+      const rec = (key && m?.audio?.sfx?.units?.[key]) || (u.def && m?.audio?.sfx?.units?.[u.def]);
+      const own = !!rec && url === rec.born;
+      const mix = own ? rec.mix?.born : null;
+      if (!unitSoundPlays(mix, this.random())) return;
+      const vol = o.volume ?? (own ? unitGain(0.9, mix) : 0.85);
+      this._play(url, { volume: vol, limited: true, unitKey: own ? `${key}:born` : 'deploy' });
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Suspend all audio processing (e.g. Activity onPause or AudioFocus loss).
+   */
+  suspend() {
+    try {
+      if (this.ctx && this.ctx.state === 'running') {
+        return this.ctx.suspend().catch(() => {});
+      }
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Resume audio processing (e.g. Activity onResume or AudioFocus gain).
+   */
+  resume() {
+    try {
+      if (this.ctx && this.ctx.state !== 'running') {
+        this._armUnlock();
+        return this.ctx.resume().then(() => {
+          if (this.ctx?.state === 'running') this._dropUnlock();
+        }, () => {});
+      }
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Temporarily duck BGM volume to make voice lines pop (~0.35 volume for durationMs, then restore).
+   */
+  duckBgm(durationMs = 1800) {
+    if (!this.ctx || !this.bgmGain) return;
+    try {
+      const t = this.ctx.currentTime;
+      const normal = this.volumes.bgm ** 2 * 0.55;
+      const ducked = normal * 0.35;
+      this.bgmGain.gain.setTargetAtTime(ducked, t, 0.08);
+      clearTimeout(this._duckTimer);
+      this._duckTimer = setTimeout(() => {
+        if (this.ctx && this.bgmGain) {
+          const t2 = this.ctx.currentTime;
+          this.bgmGain.gain.setTargetAtTime(this.volumes.bgm ** 2 * 0.55, t2, 0.3);
+        }
+      }, durationMs);
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Play an operator's core Japanese voice line (global operator voice concurrency 1, with BGM ducking).
+   * @param {string|any} defId operator charId (e.g. 'char_002_amiya') or piece / unit
+   * @param {{ volume?: number }} [o]
+   */
+  voice(defId, o = {}) {
+    try {
+      if (!defId) return;
+      const key = typeof defId === 'string' ? (defId.startsWith('char_') ? defId : voiceKey(defId)) : voiceKey(defId);
+      const warnKey = key || (typeof defId === 'object' ? (defId?.id || defId?.chessId || defId?.charId || typeof defId) : String(defId));
+      if (!this.ctx) {
+        this._warn('voice_no_ctx', 'AudioContext not active for voice');
+      }
+      const m = this.getManifest();
+      const url = key ? (m?.audio?.voice?.[key] || m?.chars?.[key]?.voice) : null;
+      if (typeof url === 'string') {
+        // The slot used to be the constant 'operator_voice', i.e. shared by every operator: deploying
+        // a row muted all but the first, which read as "the voice only works when I tap one unit".
+        // Each operator gets its own cooldown; the global cap stays maxVoices.
+        const played = this._play(url, { volume: o.volume ?? 0.95, limited: true, unitKey: `voice:${key}` });
+        if (played !== false) {
+          this.duckBgm(2000);
+        }
+      } else {
+        if (!this.warned.has(`voice_missing_${warnKey}`)) {
+          this.warned.add(`voice_missing_${warnKey}`);
+          const type = typeof defId;
+          const keys = defId && typeof defId === 'object' ? Object.keys(defId).slice(0, 3).join(', ') : '';
+          console.warn(`[audio] Voice line missing: type=${type}${keys ? ` keys=[${keys}]` : ''} key=${warnKey}`);
+        }
+      }
+    } catch (err) {
+      console.warn(`[audio] Error playing voice for ${defId}:`, err);
+    }
+  }
+
   // ---- battle events ------------------------------------------------------------------------------------------
 
   /** Reset the unit map for a new field (m.field.units = UnitInfo[]). */
@@ -681,10 +804,13 @@ export class AudioManager {
           const m = this.getManifest();
           const url = deploySfxUrl(m, u);
           if (!url) continue;
-          const own = url === m?.audio?.sfx?.units?.[u.def]?.born;
-          const mix = own ? m.audio.sfx.units[u.def].mix?.born : null;
+          const key = voiceKey(u);
+          const rec = m?.audio?.sfx?.units?.[key] || m?.audio?.sfx?.units?.[u.def];
+          const own = !!rec && url === rec.born;
+          const mix = own ? rec.mix?.born : null;
           if (!unitSoundPlays(mix, this.random())) continue;
           this._playUnitUrl(url, own ? `${e[1]}:born` : 'deploy', own ? unitGain(0.8, mix) : 0.5);
+          this.voice(key || u.def);
         } else if (kind === 'fx') {
           // a summon used up by its own effect (香槟炸弹 exploding: `consumed`): its impact sound now, no death sound
           const ex = e[4];

@@ -97,8 +97,26 @@ export function RangeGrid({ grid, class: cls }) {
   return html`<div class=${cx('rgrid', cls)} style=${rangeGridStyle(box)} aria-label="攻击范围">${cells}</div>`;
 }
 
+const STAT_SHORT = {
+  '生命上限': '生命',
+  '法术抗性': '法抗',
+  '攻击间隔': '间隔',
+  '阻挡数': '阻挡',
+  '部署费用': '费用',
+  '再部署': '再部署',
+  '移动速度': '移速',
+  '攻击': '攻击',
+  '防御': '防御',
+  '目标价值': '价值',
+};
+
 function Stat({ k, v, sub, tone = null, title }) {
-  return html`<div class=${cx('dstat', tone && `is-${tone}`)} title=${title}><span class="dstat__k">${k}</span><span class="dstat__row"><b class="dstat__v num">${v}</b>${sub ? html`<small>${sub}</small>` : null}</span></div>`;
+  const shortK = STAT_SHORT[k] || k;
+  const fullTitle = title ? (k !== shortK ? `${k}（${title}）` : title) : k;
+  // The cell's text is always the full label — views and tests key stats by it. On a phone the label
+  // is too wide for the fixed cell at the readable floor, so CSS swaps in the short form from
+  // data-short; the hidden span still counts as this node's text, which is what keeps both true.
+  return html`<div class=${cx('dstat', tone && `is-${tone}`)} title=${fullTitle} aria-label=${k}><span class="dstat__k" data-short=${shortK}><span class="dstat__k-full">${k}</span></span><span class="dstat__row"><b class="dstat__v num">${v}</b>${sub ? html`<small>${sub}</small>` : null}</span></div>`;
 }
 
 /** Tolerance below which a live stat counts as its base (display rounding). */

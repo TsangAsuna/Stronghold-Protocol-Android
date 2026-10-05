@@ -223,7 +223,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func presentGame(url: String) {
-        let game = GameActivity(url: url)
+        let game = GameViewController(url: url)
         game.modalPresentationStyle = .fullScreen
         present(game, animated: false)
     }

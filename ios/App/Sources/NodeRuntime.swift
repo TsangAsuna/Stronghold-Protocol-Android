@@ -29,7 +29,8 @@ final class NodeRuntime {
     private var stateValue: State = .idle
     private let lock = NSLock()
 
-    private var state: State {
+    /// Committed lifecycle state (readable from UI controllers).
+    var state: State {
         get { lock.lock(); defer { lock.unlock() }; return stateValue }
         set { lock.lock(); stateValue = newValue; lock.unlock() }
     }

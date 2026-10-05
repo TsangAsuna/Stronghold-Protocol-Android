@@ -103,7 +103,7 @@ final class HomeViewController: UIViewController {
         hintLabel.textColor = .secondaryLabel
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let hostingBox = UIStackView(arrangedSubviews: [urlLabel, safariButton, inAppButton!, copyButton, stopButton])
+        let hostingBox = UIStackView(arrangedSubviews: [urlLabel, safariButton, inAppButton, copyButton, stopButton])
         hostingBox.axis = .vertical
         hostingBox.spacing = 10
         hostingBox.translatesAutoresizingMaskIntoConstraints = false

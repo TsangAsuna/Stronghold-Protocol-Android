@@ -143,6 +143,19 @@ final class HomeViewController: UIViewController {
         safariButton.addTarget(self, action: #selector(openInSafari), for: .touchUpInside)
         copyButton.addTarget(self, action: #selector(copyAddress), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopServerTapped), for: .touchUpInside)
+
+        // the LAN IP can change (DHCP / network switch) — refresh on foreground
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(refreshHostingInfo),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func refreshHostingInfo() {
+        guard let port = hostingPort, NodeRuntime.shared.isHealthy(port) else { return }
+        let lan = NodeRuntime.localIPv4Addresses().map { "http://\($0):\(port)" }
+        urlLabel.text = "本机地址：\n" + lan.joined(separator: "\n")
+        DebugLog.i("host", "hosting info refreshed: \(lan)")
+    }
     }
 
     private func styleButton(_ b: UIButton, filled: Bool) {
@@ -216,7 +229,7 @@ final class HomeViewController: UIViewController {
             }
 
             // prefer the last successful port so browser addresses stay valid
-            let preferred = (prefs.object(forKey: "last_port") as? Int) ?? 3000
+            let preferred = (self.prefs.object(forKey: "last_port") as? Int) ?? 3000
             let port = NodeRuntime.freePort(preferred)
             DebugLog.i("host", "host flow started (port=\(port))")
             let state = NodeRuntime.shared.ensureStarted(root: NodeRuntime.documentsNodeRoot, port: port)

@@ -26,6 +26,7 @@ final class HomeViewController: UIViewController {
     private var browser: LanBrowser?
     private var hostingPort: Int?
     private var hostingBox: UIStackView?
+    private var inAppButton: UIButton?
 
     private var gameURL: URL? {
         guard let port = hostingPort else { return nil }
@@ -75,7 +76,17 @@ final class HomeViewController: UIViewController {
         urlLabel.isUserInteractionEnabled = true
         urlLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        safariButton.setTitle("▶ 在 Safari 中打开游戏", for: .normal)
+        safariButton.setTitle("▶ 在 Safari 中打开游戏（推荐）", for: .normal)
+        let inAppButton = UIButton(type: .system)
+        inAppButton.setTitle("App 内打开（实验）", for: .normal)
+        inAppButton.titleLabel?.font = .systemFont(ofSize: 14)
+        inAppButton.translatesAutoresizingMaskIntoConstraints = false
+        inAppButton.backgroundColor = UIColor(white: 1, alpha: 0.12)
+        inAppButton.setTitleColor(.label, for: .normal)
+        inAppButton.layer.cornerRadius = 10
+        inAppButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        inAppButton.addTarget(self, action: #selector(openInApp), for: .touchUpInside)
+        self.inAppButton = inAppButton
         copyButton.setTitle("复制地址", for: .normal)
         stopButton.setTitle("停止服务器并退出", for: .normal)
         for b in [safariButton, copyButton, stopButton] {
@@ -92,7 +103,7 @@ final class HomeViewController: UIViewController {
         hintLabel.textColor = .secondaryLabel
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let hostingBox = UIStackView(arrangedSubviews: [urlLabel, safariButton, copyButton, stopButton])
+        let hostingBox = UIStackView(arrangedSubviews: [urlLabel, safariButton, inAppButton!, copyButton, stopButton])
         hostingBox.axis = .vertical
         hostingBox.spacing = 10
         hostingBox.translatesAutoresizingMaskIntoConstraints = false
@@ -270,6 +281,19 @@ final class HomeViewController: UIViewController {
 
     private func hostingBoxVisible(_ visible: Bool) {
         hostingBox?.isHidden = !visible
+        // in-app play stays available in both hosting and join flows
+        inAppButton?.isHidden = !visible && hostingPort == nil
+    }
+
+    @objc private func openInApp() {
+        let url: String
+        if let port = hostingPort { url = "http://127.0.0.1:\(port)/" }
+        else if let raw = prefs.string(forKey: "last_host"), !raw.isEmpty { url = raw.hasPrefix("http") ? raw : "http://\(raw)" }
+        else { statusLabel.text = "请先开服或加入对局"; return }
+        DebugLog.i("bridge", "opening in-app webview: \(url)")
+        let game = GameViewController(url: url)
+        game.modalPresentationStyle = .fullScreen
+        present(game, animated: false)
     }
 
     @objc private func openInSafari() {

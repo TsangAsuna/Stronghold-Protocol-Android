@@ -96,6 +96,15 @@ npm start          # 启动服务器：http://localhost:3000
 
 从源码构建：`npm install && npm run assets && node scripts/pack-android.mjs && (cd android && ./gradlew assembleDebug)`，架构、联机玩法与日志诊断见 [docs/ANDROID.md](docs/ANDROID.md)。
 
+### 方式四：iPad / iPhone（未签名 ipa，实验性）
+
+`ios/` 目录里是与安卓同架构的 Swift 壳：Node.js 服务器同样内嵌（nodejs-mobile 静态库），WKWebView 全屏运行网页端，iPhone / iPad 通用、全方向自适应（iPad 横竖屏画幅自动跟随），部署目标 iOS 15.0（覆盖 iPadOS 15.1）。
+
+- **产物是未签名 .ipa**：TrollStore 可直接安装；AltStore / Sideloadly / 爱思助手等需要自签（免费 Apple ID 7 天、开发者证书 1 年）。
+- **发布**：[GitHub Actions](.github/workflows/ios-release.yml) 在 macOS 云端构建（`workflow_dispatch` 或推 `v*` 标签），自动把 ipa 挂到 Releases；安卓 APK 同理（[android-release.yml](.github/workflows/android-release.yml)）。
+- **自己构建**（需要 macOS + Xcode 15+）：`npm install && npm run assets && node scripts/pack-ios.mjs && brew install xcodegen && (cd ios && xcodegen generate && xcodebuild -project StrongholdProtocol.xcodeproj -target StrongholdProtocol -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build)`。
+- iOS 端暂缺 NSD 自动发现：加入对局请用「输入房主地址」（与安卓的手动输入一致）；同一局域网下延迟表现与安卓相同。
+
 ### 系统要求
 
 | 项目 | 要求 |

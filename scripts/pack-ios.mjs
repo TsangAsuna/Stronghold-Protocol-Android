@@ -37,19 +37,35 @@ function extractZip(zipPath, dest) {
 }
 
 function findLibnode(dir) {
-  // the release layout has varied across versions — find any libnode archive for ios
+  // the release layout has varied across versions — accept static archives,
+  // dylibs and framework/xcframework binaries for the device (non-simulator) slice
   const hits = [];
   const walk = (d) => {
     for (const name of readdirSync(d)) {
       const full = join(d, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (/^libnode\.(a|dylib)$/.test(name) && /ios/.test(full) && !/simulator|x86_64/i.test(full)) {
-        hits.push(full);
+      const st = statSync(full);
+      if (st.isDirectory()) {
+        walk(full);
+      } else if (/libnode/i.test(name) && !/simulator|x86_64|iphonesimulator/i.test(full)) {
+        if (/\.(a|dylib)$/.test(name) || /framework/i.test(full)) hits.push(full);
       }
     }
   };
   walk(dir);
   return hits[0];
+}
+
+function printTree(dir, depth = 3) {
+  const walk = (d, level, prefix) => {
+    if (level > depth) return;
+    for (const name of readdirSync(d)) {
+      const full = join(d, name);
+      const isDir = statSync(full).isDirectory();
+      console.log(`[libnode-ios]   ${prefix}${name}${isDir ? '/' : ''}`);
+      if (isDir) walk(full, level + 1, prefix + '  ');
+    }
+  };
+  walk(dir, 1, '  ');
 }
 
 function ensureLibnode() {
@@ -84,7 +100,12 @@ function ensureLibnode() {
   }
 
   const lib = findLibnode(src);
-  if (!lib) throw new Error(`libnode 静态库未找到于 ${src}`);
+  if (!lib) {
+    console.error(`[libnode-ios] 未找到 libnode，解压树如下（${src}）：`);
+    printTree(src, 4);
+    throw new Error('libnode 静态库未找到');
+  }
+  console.log(`[libnode-ios] found: ${lib}`);
   cpSync(lib, join(out, 'libnode.a'));
 
   // headers: zip ships include/node/*.h — flatten to include/*.h for a single search path

@@ -42,7 +42,9 @@ jobs:
 
       - name: Build APK (Gradle wrapper, AGP 8.13 / Gradle 9.5)
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Rename APK
         run: |

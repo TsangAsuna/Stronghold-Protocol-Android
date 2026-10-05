@@ -59,7 +59,12 @@ console.log('[room]', JSON.stringify(room), 'infoReady:', infoRes);
 await new Promise((r) => setTimeout(r, 6000));
 await page.screenshot({ path: path.join(OUT, 'dd-2-prep.png') });
 
-// buy slot 0 and move it onto the board via the game's own protocol
+// buy slot 0, place it, then 准备就绪 (g.ready) to start combat
+await page.evaluate(async () => {
+  const sp = globalThis.__SP__;
+  await sp.net.request('g.ready', { ready: true });
+});
+await new Promise((r) => setTimeout(r, 4000));
 const moveResult = await page.evaluate(async () => {
   const sp = globalThis.__SP__;
   const st = sp.store.get ? sp.store.get() : sp.store.state;

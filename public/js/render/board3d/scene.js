@@ -269,7 +269,8 @@ export class BoardScene {
         nodes.push({ r0, c0, r1, c1, at: total, d });
         total += d;
       }
-      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
+      const dots = Array.from({ length: Math.max(2, Math.round(total / 2.2)) }, (_, i) => ({ phase: i / Math.max(2, Math.round(total / 2.2)), sp: 0.35 + Math.random() * 0.1 }));
+      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion, dots });
     }
   }
 
@@ -279,14 +280,26 @@ export class BoardScene {
     const T = this.THREE;
     const lines = [];
     for (const path of this.routePaths) {
+      const corners = [];
+      for (const n of path.nodes) if (!corners.length || corners[corners.length - 1].r !== n.r0 || corners[corners.length - 1].c !== n.c0) corners.push([n.r0, n.c0]);
+      corners.push([path.nodes[path.nodes.length - 1].r1, path.nodes[path.nodes.length - 1].c1]);
       const geo = new T.BufferGeometry();
-      const pos = new Float32Array(16 * 3);
+      const pos = new Float32Array(corners.length * 3);
+      corners.forEach(([r, c], i) => { pos[i * 3] = c; pos[i * 3 + 1] = r; pos[i * 3 + 2] = 0.06; });
       geo.setAttribute('position', new T.BufferAttribute(pos, 3));
-      const mat = new T.LineBasicMaterial({ color: 0xff4a38, transparent: true, opacity: 0.9, depthWrite: false });
+      const mat = new T.LineBasicMaterial({ color: 0xff3a30, transparent: true, opacity: 0.6, depthWrite: false });
       const line = new T.Line(geo, mat);
       line.frustumCulled = false;
       this.root.add(line);
-      lines.push({ path, line, pos });
+      const dn = path.dots.length;
+      const dgeo = new T.BufferGeometry();
+      const dpos = new Float32Array(dn * 3);
+      dgeo.setAttribute('position', new T.BufferAttribute(dpos, 3));
+      const dmat = new T.PointsMaterial({ size: 0.28, color: 0xff5a4a, transparent: true, depthWrite: false, sizeAttenuation: true });
+      const points = new T.Points(dgeo, dmat);
+      points.frustumCulled = false;
+      this.root.add(points);
+      lines.push({ path, line, pos, points, dpos, dn });
     }
     this.routeSweeps = { t0: this.time, lines };
   }
@@ -603,7 +616,6 @@ export class BoardScene {
     for (const k of ['water', 'mire', 'infection', 'smog']) this.mat[k].uniforms.uTime.value = t;
     // 路线电流（红）：每条路线一道彗尾扫过一次（1.15 s）后消失
     if (this.routeSweeps) {
-      const SWEEP = 1.15, TAIL = 3.2, SAMPLES = 15;
       const done = this.time - this.routeSweeps.t0 >= SWEEP;
       if (!done) {
         for (const { path, line, pos } of this.routeSweeps.lines) {

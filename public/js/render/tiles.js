@@ -716,45 +716,51 @@ export class TileField {
     this._drawRoutes();
   }
 
-  /** 一次性路线电流：每条路径一道红色彗尾从门滑向目标（1.15 s），扫完即消失。 */
+  /** 官方样式的路线显示：细红线全程 + 方块粒子流动；一次性（淡入→流动→淡出，~2 s）。 */
   _drawRoutes() {
     const g = this.routeGfx;
     g.clear();
     if (this.routeSweepT0 == null || !this.routePaths?.length || !this.cam) return;
-    const cam = this.cam;
-    const p = this._p, q = { x: 0, y: 0, s: 0, depth: 0 };
-    const SWEEP = 1.15, TAIL = 3.2, RED = COLORS.gateRed;
-    let alive = false;
+    const cam = this.cam, p = this._p, q = { x: 0, y: 0, s: 0, depth: 0 };
+    const T = this.time - this.routeSweepT0;
+    const FADE_IN = 0.25, HOLD = 1.3, FADE_OUT = 0.4, LIFE = FADE_IN + HOLD + FADE_OUT;
+    if (T > LIFE) { this.routeSweepT0 = null; g.clear(); return; }
+    const alpha = T < FADE_IN ? T / FADE_IN : T > FADE_IN + HOLD ? 1 - (T - FADE_IN - HOLD) / FADE_OUT : 1;
+    const RED = COLORS.gateRed, w = Math.max(1.5, this._p.s / 64 * 2.2);
+    const corners = (path) => {
+      const pts = [];
+      for (const n of path.nodes) if (!pts.length || pts[pts.length - 1].r !== n.r0 || pts[pts.length - 1].c !== n.c0) pts.push([n.r0, n.c0]);
+      const last = path.nodes[path.nodes.length - 1];
+      pts.push([last.r1, last.c1]);
+      return pts;
+    };
     for (const path of this.routePaths) {
-      const prog = (this.time - this.routeSweepT0) / SWEEP;
-      if (prog >= 1) continue;
-      alive = true;
-      const alpha = Math.sin(prog * Math.PI);
-      if (alpha <= 0.02) continue;
-      const head = prog * (path.total + TAIL) - TAIL;
-      let prev = null;
-      const STEPS = 9;
-      for (let i = 0; i <= STEPS; i++) {
-        const dd = head + (i / STEPS) * TAIL;
-        if (dd < 0 || dd > path.total) { prev = null; continue; }
+      // 细红线全程
+      g.lineStyle(w, RED, 0.6 * alpha);
+      let first = true;
+      for (const [r, c] of corners(path)) {
+        cam.project(c, r, this.heightAt(r, c) + 0.06, first ? p : q);
+        if (first) g.moveTo(p.x, p.y); else g.lineTo(q.x, q.y);
+        first = false;
+      }
+      // 方块粒子沿线流动
+      for (const dot of path.dots) {
+        const prog = (T * dot.sp + dot.phase) % 1;
+        let at = prog * path.total;
         let seg = path.nodes[0];
-        for (const sN of path.nodes) { if (dd >= sN.at) seg = sN; else break; }
-        const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
-        const r = seg.r0 + (seg.r1 - seg.r0) * k;
-        const c = seg.c0 + (seg.c1 - seg.c0) * k;
-        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, i === 0 ? p : q);
-        if (prev) {
-          g.lineStyle((0.06 + 0.22 * (i / STEPS)) * (p.s / 64), RED, alpha * (0.3 + 0.7 * (i / STEPS)));
-          g.moveTo(prev.x, prev.y);
-          g.lineTo(q.x, q.y);
-        }
-        prev = { x: q.x, y: q.y };
+        for (const sN of path.nodes) { if (at >= sN.at) seg = sN; else break; }
+        const k = seg.d > 0 ? (at - seg.at) / seg.d : 0;
+        const r = seg.r0 + (seg.r1 - seg.r0) * k, c = seg.c0 + (seg.c1 - seg.c0) * k;
+        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, q);
+        const size = w * 1.1;
+        g.beginFill(0xff6a5a, 0.9 * alpha);
+        g.drawRect(q.x - size / 2, q.y - size / 2, size, size);
+        g.endFill();
       }
     }
-    if (!alive) { this.routeSweepT0 = null; g.clear(); }
   }
 
-  /** Gate / objective wire boxes: tall, so each is its own Graphics depth-sorted with the block rows and units. */
+  /** Gate / objective wire boxes  /** Gate / objective wire boxes: tall, so each is its own Graphics depth-sorted with the block rows and units. */
   _buildBoxes() {
     for (const b of this.boxes) b.g.destroy();
     this.boxes = [];
@@ -815,7 +821,8 @@ export class TileField {
         nodes.push({ r0, c0, r1, c1, at: total, d });
         total += d;
       }
-      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
+      const dots = Array.from({ length: Math.max(2, Math.round(total / 2.2)) }, (_, i) => ({ phase: i / Math.max(2, Math.round(total / 2.2)), sp: 0.35 + Math.random() * 0.1 }));
+      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion, dots });
     }
   }
 

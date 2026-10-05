@@ -193,6 +193,21 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "资源解压中，请稍候", Toast.LENGTH_SHORT).show()
             return
         }
+
+        // A server left running from the previous game (e.g. backed out of GameActivity)
+        // is reused as-is — second tap re-enters instantly instead of failing on ports.
+        (NodeRuntime.currentState as? NodeRuntime.State.Running)?.let { running ->
+            if (NodeRuntime.isHealthy(running.port)) {
+                DebugLog.i("host", "reusing running server on port ${running.port}")
+                status.text = "服务器已在运行 · 端口 ${running.port}"
+                updateLanHint()
+                NodeService.start(this, running.port)
+                discovery = discovery ?: LanDiscovery(this) { }.also { it.register(running.port) }
+                GameActivity.start(this, "http://127.0.0.1:${running.port}/")
+                return
+            }
+        }
+
         val port = NodeRuntime.freePort(prefs.getInt("port", 3000))
         activePort = port
         DebugLog.i("host", "host flow started (port=$port)")
@@ -228,35 +243,50 @@ class MainActivity : AppCompatActivity() {
     private fun showJoinDialog() {
         DebugLog.i("join", "join dialog opened")
         val view = layoutInflater.inflate(R.layout.dialog_join, null)
-        val list = view.findViewById<ListView>(R.id.lvHosts)
+        val hostsBox = view.findViewById<android.widget.LinearLayout>(R.id.lvHosts)
         val address = view.findViewById<EditText>(R.id.etAddress)
         address.setText(prefs.getString(P_LAST_HOST, ""))
 
-        var services: List<LanDiscovery.SpHost> = emptyList()
-        val items = ArrayList<String>()
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, items)
-        list.adapter = adapter
+        fun renderHosts(services: List<LanDiscovery.SpHost>) {
+            hostsBox.removeAllViews()
+            if (services.isEmpty()) {
+                val empty = TextView(this).apply {
+                    text = "（搜索中… 找不到就手动输入）"
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(context, R.color.textDim))
+                    setPadding(4, 8, 4, 8)
+                }
+                hostsBox.addView(empty)
+                return
+            }
+            for (s in services) {
+                val row = TextView(this).apply {
+                    text = "${s.name}  ·  ${s.host}:${s.port}"
+                    textSize = 14f
+                    setTextColor(ContextCompat.getColor(context, R.color.textPrimary))
+                    val pad = (8 * resources.displayMetrics.density).toInt()
+                    setPadding(pad, pad / 2, pad, pad / 2)
+                    background = getDrawable(R.drawable.host_row_bg)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        address.setText("${s.host}:${s.port}")
+                        Toast.makeText(context, "已填入房主地址", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                hostsBox.addView(row)
+            }
+            DebugLog.i("join", "discovered ${services.size} host(s)")
+        }
 
         val d = LanDiscovery(this) { found ->
-            runOnUiThread {
-                services = found
-                items.clear()
-                found.forEach { s -> items.add("${s.name}  ·  ${s.host}:${s.port}") }
-                adapter.notifyDataSetChanged()
-                DebugLog.i("join", "discovered ${items.size} host(s)")
-            }
+            runOnUiThread { renderHosts(found) }
         }
         discovery = d
         d.start()
 
-        list.setOnItemClickListener { _, _, pos, _ ->
-            services.getOrNull(pos)?.let { s ->
-                address.setText("${s.host}:${s.port}")
-                Toast.makeText(this, "已填入房主地址", Toast.LENGTH_SHORT).show()
-            }
-        }
         view.findViewById<TextView>(R.id.btnRefresh)?.setOnClickListener {
-            items.clear(); adapter.notifyDataSetChanged()
+            renderHosts(emptyList())
             d.stop(); d.start()
         }
 
@@ -275,6 +305,10 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .create()
+        dialog.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
         dialog.setOnDismissListener {
             d.stop()
             if (discovery === d) discovery = null

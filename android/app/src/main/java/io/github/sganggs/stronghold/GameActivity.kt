@@ -66,11 +66,6 @@ class GameActivity : AppCompatActivity() {
                 "root:(document.getElementById('app')||{}).childElementCount||0," +
                 "webgl:gl('webgl'),webgl2:gl('webgl2'),dpr:window.devicePixelRatio||0," +
                 "w:window.innerWidth||0,h:window.innerHeight||0})}catch(e){return JSON.stringify({err:String(e)})}})()"
-
-        private const val ESCAPE_JS = "(function(){" +
-                "var mk=function(t){try{return new KeyboardEvent(t,{key:'Escape',code:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true})}catch(e){return null}};" +
-                "['keydown','keyup'].forEach(function(t){var e=mk(t);if(e){window.dispatchEvent(e);document.dispatchEvent(e);}});" +
-                "})()"
     }
 
     private lateinit var webView: WebView
@@ -81,7 +76,6 @@ class GameActivity : AppCompatActivity() {
     private var baseUrl: String = ""
     private var baseHost: String = ""
     private var probeAttempts = 0
-    private var lastBackAt = 0L
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -277,17 +271,16 @@ class GameActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- back & immersive
 
+    /**
+     * Back / edge-swipe simply leaves the game (standard Android behaviour); the
+     * embedded server keeps running under the foreground service, so re-entering
+     * via 「开始游戏」 is instant. The touch UI has its own close buttons, so the
+     * shell never needs to fake an Esc keypress.
+     */
     @Deprecated("Deprecated in Java")
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        val now = System.currentTimeMillis()
-        if (now - lastBackAt < 2_000) {
-            finish()
-            return
-        }
-        lastBackAt = now
-        android.widget.Toast.makeText(this, "已发送 ESC · 再按一次退出游戏", android.widget.Toast.LENGTH_SHORT).show()
-        webView.evaluateJavascript(ESCAPE_JS, null)
+        finish()
     }
 
     private fun immersive() {

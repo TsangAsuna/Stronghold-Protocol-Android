@@ -15,6 +15,7 @@ settings:
     CODE_SIGNING_REQUIRED: NO
     CODE_SIGNING_ALLOWED: NO               # 未签名构建（TrollStore 直装 / 其他工具重签）
     ENABLE_BITCODE: NO
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     OTHER_LDFLAGS:
       - "-lz"
     HEADER_SEARCH_PATHS:
@@ -26,6 +27,7 @@ targets:
     platform: iOS
     sources:
       - path: App/Sources
+      - path: App/Assets.xcassets
       # node headers are for the C++ shim only — never compiled into the target
       - path: third_party/include
         buildPhase: none
@@ -45,6 +47,8 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
+        UIFileSharingEnabled: true          # 「文件」App 可直取 Documents/logs 排障
+        LSSupportsOpeningDocumentsInPlace: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight

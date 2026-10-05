@@ -253,8 +253,6 @@ export class TileField {
     this.devBoxes = [];            // textured box props (in the row meshes) { dev, row, col, role }
     this.blowers = [];             // { dev, row, col, dir } airflow sources
     this.animSprites = [];         // { sprite, r, c, kind, phase }
-    this.routePaths = [];          // 本局批次路线 { nodes, total, motion }（buildRoutes ← 开战消息 meta.routes）
-    this.routeSweepT0 = null;      // 一次性电流的起始时刻；null = 未播放
     this.battleRect = null;
     this.cam = null;
     this.camVersion = -1;
@@ -330,87 +328,6 @@ export class TileField {
   setStage(stage) {
     this.stage = stage || null;
     this._rebuild();
-  }
-
-  /**
-   * 怪物行进路线电流（官方的红门→蓝门能量线，2D 棋盘）：routes = 开战消息里的
-   * wave.routes（[{start,end,checkpoints,motion}]，每条都是本局真实批次路线）。
-   * 走行路线匹配 stages.groundPaths 的逐格路径；飞行路线用 start→checkpoints→end。
-   * playRouteSweeps() 触发：每条路线一道彗尾电流快速滑过一次后完全消失（官方的
-   * "准备就绪后路线显示一次"）。
-   */
-  buildRoutes(routes) {
-    this.routePaths = [];
-    if (!Array.isArray(routes) || !this.stage?.groundPaths && true) {
-      // groundPaths 仅在有 stage 时可用；没有 stage 也能用 start/checkpoints/end 直连
-    }
-    for (const r of routes || []) {
-      if (!r || !Array.isArray(r.start) || !Array.isArray(r.end)) continue;
-      const key = `${r.start[0]},${r.start[1]}->${r.end[0]},${r.end[1]}`;
-      let pts = this.stage?.groundPaths?.[key];
-      if (!Array.isArray(pts) || pts.length < 2) {
-        pts = [r.start, ...(Array.isArray(r.checkpoints) ? r.checkpoints : []), r.end];
-      }
-      if (!Array.isArray(pts) || pts.length < 2) continue;
-      const nodes = [];
-      let total = 0;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const [r0, c0] = pts[i];
-        const [r1, c1] = pts[i + 1];
-        const d = Math.abs(r1 - r0) + Math.abs(c1 - c0);
-        if (d <= 0) continue;
-        nodes.push({ r0, c0, r1, c1, at: total, d });
-        total += d;
-      }
-      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
-    }
-  }
-
-  /** 每条路线一道彗尾电流扫过一次（只在战斗开始时调用一次）。 */
-  playRouteSweeps() {
-    if (!this.routePaths?.length || this.routeSweepT0 != null) return;
-    this.routeSweepT0 = this.time;
-  }
-
-  /** 一次性路线电流：每条路径一道彗尾（红）从门滑向目标，扫完即消失。 */
-  _drawRoutes() {
-    const g = this.routeGfx;
-    g.clear();
-    if (this.routeSweepT0 == null || !this.routePaths?.length || !this.cam) return;
-    const cam = this.cam;
-    const p = this._p, q = { x: 0, y: 0, s: 0, depth: 0 };
-    const SWEEP = 1.15; // 秒：一次扫过的时间（怪来得快，显示要短）
-    const TAIL = 3.2;   // 彗尾长度（格）
-    const RED = COLORS.gateRed;
-    let alive = false;
-    for (const path of this.routePaths) {
-      const prog = (this.time - this.routeSweepT0) / SWEEP;
-      if (prog >= 1) continue;
-      alive = true;
-      const alpha = Math.sin(prog * Math.PI);
-      if (alpha <= 0.02) continue;
-      const head = prog * (path.total + TAIL) - TAIL;
-      let prev = null;
-      const STEPS = 9;
-      for (let i = 0; i <= STEPS; i++) {
-        const dd = head + (i / STEPS) * TAIL;
-        if (dd < 0 || dd > path.total) { prev = null; continue; }
-        let seg = path.nodes[0];
-        for (const s of path.nodes) { if (dd >= s.at) seg = s; else break; }
-        const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
-        const r = seg.r0 + (seg.r1 - seg.r0) * k;
-        const c = seg.c0 + (seg.c1 - seg.c0) * k;
-        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, i === 0 ? p : q);
-        if (prev) {
-          const wHead = 0.14 * (i / STEPS) + 0.03;
-          g.lineStyle(wHead * (p.s || 40) * 0.06, RED, alpha * (0.25 + 0.75 * (i / STEPS)));
-          g.moveTo(prev.x, prev.y);
-          g.lineTo(q.x, q.y);
-        }
-        prev = { x: q.x, y: q.y };
-      }
-    }
-    if (!alive) { this.routeSweepT0 = null; g.clear(); }
   }
 
   _rebuild() {
@@ -792,7 +709,6 @@ export class TileField {
     for (let i = this.flashes.length - 1; i >= 0; i--) { this.flashes[i].t += dt; if (this.flashes[i].t > 1.2) this.flashes.splice(i, 1); }
     this._drawBoxes();
     this._drawFlow();
-    this._drawRoutes();
   }
 
   /** Gate / objective wire boxes: tall, so each is its own Graphics depth-sorted with the block rows and units. */

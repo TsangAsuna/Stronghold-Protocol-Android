@@ -362,11 +362,9 @@ function makeData(src) {
   };
 }
 
-// 'high' follows the screen density: a cap of 2 on a 480dpi phone (dpr 3) paints the board at 2/3 native and the system
-// upscales it, which reads as soft operators. Desktop dpr is 1-2, so lifting 'high' only changes phones.
-const QUALITY_RES = { high: 3, medium: 1.5, low: 1 };
+const QUALITY_RES = { high: 2, medium: 1.5, low: 1 };
 /** Pixel-ratio cap of the 3D board canvas per quality (its fill cost is the PBR board, not the sprites). */
-const BOARD_RES = { high: 3, medium: 1.25, low: 1 };
+const BOARD_RES = { high: 2, medium: 1.25, low: 1 };
 
 /**
  * Before a renderer is destroyed: free its GL copies of every texture / buffer / geometry / framebuffer it
@@ -429,10 +427,9 @@ export async function createFieldView(host, options = {}) {
   const boardDpr = () => Math.min(globalThis.devicePixelRatio || 1, BOARD_RES[settings.quality] || 2);
   const s0 = size();
   const app = new P.Application({
-    // MSAA only where it pays: judge the ratio the canvas is actually painted at, not the screen's dpr — a capped
-    // resolution on a dense screen was sharp enough for neither.
+    // MSAA only where it pays: dense (DPR ≥ 1.5) screens are sharp enough without it and it would cost 4× the fill
     // transparent: the 3D board canvas shows through (the 2D board paints an opaque backdrop itself)
-    width: s0.width, height: s0.height, antialias: opts.antialias ?? dpr() < 2, backgroundColor: 0x0a0e0d, backgroundAlpha: 0,
+    width: s0.width, height: s0.height, antialias: opts.antialias ?? (settings.quality === 'high' && (globalThis.devicePixelRatio || 1) < 1.5), backgroundColor: 0x0a0e0d, backgroundAlpha: 0,
     resolution: dpr(), autoDensity: true, powerPreference: 'high-performance',
   });
   const canvas = app.view;
@@ -490,17 +487,6 @@ export async function createFieldView(host, options = {}) {
     const set = listeners.get(name);
     if (!set) return;
     for (const fn of [...set]) { try { fn(payload); } catch (err) { console.error(`[render] ${name} listener failed`, err); } }
-  };
-
-  /**
-   * Announce that a unit reached the board. The deploy voice line hangs off this event rather than off
-   * the manual drop handler, so it follows every route in: manual placement, combat auto-deploy, a
-   * merge's elite and a raid redeploy.
-   */
-  const announceDeploy = (v, e) => {
-    const info = v?.info;
-    if (!info || info.side === 'enemy') return;
-    emit('unitDeploy', { uid: e?.uid ?? null, defId: info.defId ?? null, chessId: e?.piece?.id ?? info.id ?? null });
   };
 
   let destroyed = false;
@@ -610,7 +596,7 @@ export async function createFieldView(host, options = {}) {
       host.insertBefore(c3, canvas);
       board3dCanvas = c3;
       const b = new BoardScene(THREE, pack, {
-        canvas: c3, antialias: settings.quality !== 'low' && boardDpr() < 2, shadows: settings.quality !== 'low',
+        canvas: c3, antialias: settings.quality !== 'low' && (globalThis.devicePixelRatio || 1) < 2, shadows: settings.quality !== 'low',
       });
       const sz = size();
       b.resize(sz.width, sz.height, boardDpr());
@@ -988,11 +974,11 @@ export async function createFieldView(host, options = {}) {
         views.set(key, v);
         if (promoFrom.has(e.uid)) {
           // a merge's elite: on the tile of the deployed copy it replaced, or on its bench slot
-          if (e.area === 'board') { v.onDeploy?.(); announceDeploy(v, e); }
+          if (e.area === 'board') v.onDeploy?.();
           fx.promote(v, promoFrom.get(e.uid).filter((f) => Math.abs(f.x - w.x) + Math.abs(f.y - w.y) > 1e-3));
           promotions.push({ uid: e.uid, id: e.piece.id, area: e.area, row: e.row ?? null, col: e.col ?? null, idx: e.idx ?? null, copies: promoFrom.get(e.uid).length });
           if (promotions.length > 20) promotions.shift();
-        } else if (e.area === 'board' && prevBoard.size && !prevBoard.has(e.uid)) { v.onDeploy?.(); announceDeploy(v, e); fx.deploy(v); }
+        } else if (e.area === 'board' && prevBoard.size && !prevBoard.has(e.uid)) { v.onDeploy?.(); fx.deploy(v); }
         else if (before.length && (e.area === 'hand' || e.area === 'temp') && !before.some((g) => g.uid === e.uid)) fx.deploy(v);
       } else {
         const prevHome = v._home;
@@ -1005,7 +991,7 @@ export async function createFieldView(host, options = {}) {
           pending.delete(key);
           if (moved || Math.abs(v.x - w.x) + Math.abs(v.y - w.y) > 1e-3) v._tween = { fx: v.x, fy: v.y, fz: v.z, tx: w.x, ty: w.y, tz: w.z, t: 0 };
           v.lift = 0;
-          if (e.area === 'board' && !prevBoard.has(e.uid) && v.onDeploy) { v.onDeploy(); announceDeploy(v, e); fx.deploy(v); }
+          if (e.area === 'board' && !prevBoard.has(e.uid) && v.onDeploy) { v.onDeploy(); fx.deploy(v); }
         }
       }
       v._home = w;
@@ -1440,21 +1426,6 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
-    // 本局批次路线（开战消息自带 meta.routes，每条对应官方的怪批次）：
-    // 2D/3D 各自构建，战斗开场时随"干员一个个落地"播放一次性的红色电流扫过
-    try {
-      tiles.buildRoutes(meta.routes);
-      board3d?.buildRoutes(meta.routes);
-    } catch (e) { console.warn('route build failed', e); }
-    // 准备就绪 → 开战的"再次落地"：记录本方在棋盘上的单位，首个战斗帧渲染后
-    // 逐个补发部署动画（官方行为——干员一个个落地；interp 的 redeployed() 在
-    // 没有前序帧的首帧上永远不触发，所以这里手动补）
-    landingPlan = null;
-    landingFired = false;
-    if (meta.prep !== true && Array.isArray(meta.units)) {
-      const own = meta.units.filter((u) => u && u.side === 'ally' && u.kind !== 'device' && u.id != null);
-      if (own.length) landingPlan = { ids: own.map((u) => u.id), at: performance.now() };
-    }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
     battleMeta = { fieldId: meta.fieldId ?? null, kind: meta.kind || 'normal', rect, stageId: meta.stageId ?? null, prep: meta.prep === true };
@@ -1571,7 +1542,7 @@ export async function createFieldView(host, options = {}) {
       case 'deploy': {
         gone.delete(e[1]);
         const v = battleView(e[1]);
-        if (v) { v.onDeploy?.(); announceDeploy(v, e); if (v.info?.kind !== 'device') fx.deploy(v); }
+        if (v) { v.onDeploy?.(); if (v.info?.kind !== 'device') fx.deploy(v); }
         break;
       }
       case 'atk': {
@@ -1670,8 +1641,6 @@ export async function createFieldView(host, options = {}) {
   }
 
   let renderT0Battle = null;   // game time of the first rendered battle frame (spawn puffs skip the initial wave)
-  let landingPlan = null;      // units to land one-by-one when the battle opens (official re-deploy moment)
-  let landingFired = false;
   let downSeq = 0;             // syncBattle pass counter: a view still marked down after a pass left the `down` list
   function syncBattle(renderT) {
     if (renderT0Battle == null) renderT0Battle = renderT;
@@ -1688,25 +1657,6 @@ export async function createFieldView(host, options = {}) {
       if (v.alive || v.info?.kind === 'device') v.sync(s, renderT);
       else if (v.dying > 0) { v.x = s.x; v.y = s.y; }
       else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }
-    }
-    // the one-by-one landing after 准备就绪 (see enterBattle): let the first frame settle,
-    // then play each operator's deploy clip + landing ring in sequence, with the
-    // route current sweeping the field at the same moment
-    if (landingPlan && !landingFired) {
-      landingFired = true;
-      const plan = landingPlan;
-      landingPlan = null;
-      if (performance.now() - plan.at < 3000) {
-        try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
-        plan.ids.forEach((id, i) => {
-          setTimeout(() => {
-            const vv = views.get(id);
-            if (!vv || !vv.alive || vv.down) return;
-            vv.onDeploy?.();
-            fx.deploy(vv);
-          }, 250 + i * 110);
-        });
-      }
     }
     // knocked-out operators waiting to redeploy (b.snap `down`, user playtest #4 item 9): their view stays on the
     // field knocked down under a redeploy ring (UnitView.setDown) — made on the spot for one already down when this

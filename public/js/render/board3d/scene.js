@@ -291,7 +291,7 @@ export class BoardScene {
       const line = new T.Line(geo, mat);
       line.frustumCulled = false;
       this.root.add(line);
-      const dn = path.dots.length;
+      const dn = 8; // single bright segment per route
       const dgeo = new T.BufferGeometry();
       const dpos = new Float32Array(dn * 3);
       dgeo.setAttribute('position', new T.BufferAttribute(dpos, 3));

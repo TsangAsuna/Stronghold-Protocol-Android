@@ -1702,14 +1702,18 @@ export async function createFieldView(host, options = {}) {
       const plan = landingPlan;
       landingPlan = null;
       if (performance.now() - plan.at < 3000) {
+        // allies visible on the first battle frame = the operators carried over from the prep board
+        const allies = [...views.values()].filter((vv) => vv.alive && !vv.down && vv.onDeploy);
+        allies.forEach((vv, i) => {
+          setTimeout(() => {
+            if (!vv.alive || vv.down) return;
+            vv._landingHold = performance.now() + 700; // hold the sim-sync override while the clip plays
+            vv.onDeploy?.();
+          }, 250 + i * 110);
+        });
         setTimeout(() => {
           try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
         }, 1300);
-        plan.ids.forEach((id, i) => {
-          setTimeout(() => {
-
-          }, 250 + i * 110);
-        });
       }
     }
     for (const [id, v] of views) {

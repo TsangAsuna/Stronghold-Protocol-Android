@@ -732,31 +732,26 @@ export class TileField {
       const corners = [];
       for (const n of path.nodes) if (!corners.length || corners[corners.length - 1].r !== n.r0 || corners[corners.length - 1].c !== n.c0) corners.push([n.r0, n.c0]);
       corners.push([path.nodes[path.nodes.length - 1].r1, path.nodes[path.nodes.length - 1].c1]);
-      // 微光底线（弱）：指出路线全程
-      g.lineStyle(w * 0.45, RED, 0.28 * alpha);
-      let first = true;
-      for (const [r, c] of corners) {
-        cam.project(c, r, this.heightAt(r, c) + 0.06, first ? p : q);
-        if (first) g.moveTo(p.x, p.y); else g.lineTo(q.x, q.y);
-        first = false;
-      }
-      // 亮段蠕动：虚线沿路径流动（引导视线从红门到蓝门）
-      let dist = 0, last = null;
-      for (const nd of path.nodes) {
-        const steps = Math.max(1, Math.round(nd.d / 0.2));
-        for (let i = 0; i < steps; i++) {
-          const k = i / steps;
-          const r = nd.r0 + (nd.r1 - nd.r0) * k, c = nd.c0 + (nd.c1 - nd.c0) * k;
-          cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.06, q);
-          const inDash = ((dist + T * FLOW) % (DASH + GAP)) < DASH;
-          if (inDash && last) {
-            g.lineStyle(w * (0.55 + 0.45 * ((dist % (DASH + GAP)) / DASH)), RED, 0.8 * alpha);
-            g.moveTo(last.x, last.y);
-            g.lineTo(q.x, q.y);
-          }
-          last = { x: q.x, y: q.y };
-          dist += 0.2;
+      // 单段亮线（1.5 格）从红门跑向蓝门：一次过，不画完整轨迹
+      const prog = Math.min(1, T / (FADE_IN + 0.9));
+      const alpha2 = alpha * Math.sin(prog * Math.PI);
+      const LEN = 1.5, head = prog * (path.total + LEN) - LEN;
+      let prev = null;
+      const STEPS = 8;
+      for (let i = 0; i <= STEPS; i++) {
+        const dd = head + (i / STEPS) * LEN;
+        if (dd < 0 || dd > path.total) { prev = null; continue; }
+        let seg = path.nodes[0];
+        for (const sN of path.nodes) { if (dd >= sN.at) seg = sN; else break; }
+        const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
+        const r = seg.r0 + (seg.r1 - seg.r0) * k, c = seg.c0 + (seg.c1 - seg.c0) * k;
+        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, i === 0 ? p : q);
+        if (prev) {
+          g.lineStyle((0.08 + 0.3 * (i / STEPS)) * w, RED, alpha2 * (0.3 + 0.7 * (i / STEPS)));
+          g.moveTo(prev.x, prev.y);
+          g.lineTo(q.x, q.y);
         }
+        prev = { x: q.x, y: q.y };
       }
     }
   }
@@ -822,8 +817,7 @@ export class TileField {
         nodes.push({ r0, c0, r1, c1, at: total, d });
         total += d;
       }
-      const dots = Array.from({ length: Math.max(2, Math.round(total / 2.2)) }, (_, i) => ({ phase: i / Math.max(2, Math.round(total / 2.2)), sp: 0.35 + Math.random() * 0.1 }));
-      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion, dots });
+      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
     }
   }
 

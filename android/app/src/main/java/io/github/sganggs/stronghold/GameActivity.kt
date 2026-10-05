@@ -97,6 +97,10 @@ class GameActivity : AppCompatActivity() {
         applyEdgePadding()
         setupWebView()
         webView.loadUrl(baseUrl)
+        // clamp the game's own HUD labels that overflow the viewport on ultrawide screens
+        webView.evaluateJavascript(
+            "(function(){function fix(){document.querySelectorAll('div,span,p').forEach(function(el){if(el.children.length===0&&/剩余可放置/.test(el.textContent||'')){var r=el.getBoundingClientRect();if(r.right>window.innerWidth-8){el.style.position='fixed';el.style.left='auto';el.style.right='8px';}}});}if(document.readyState!=='loading'){setTimeout(fix,900);}else{document.addEventListener('DOMContentLoaded',function(){setTimeout(fix,900);});}})()",
+            null)
     }
 
     // ---------------------------------------------------------------- webview

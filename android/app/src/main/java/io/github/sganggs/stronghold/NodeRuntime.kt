@@ -40,8 +40,30 @@ object NodeRuntime {
     /** Blocks (native) until the node program exits — call on a worker thread. */
     external fun startNodeWithArguments(args: Array<String>, logPath: String)
 
-    fun isHealthy(port: Int, timeoutMs: Int = 700): Boolean = try {
-        val conn = URL("http://127.0.0.1:$port/healthz").openConnection() as HttpURLConnection
+    /**
+     * Health check against ALL of the device's own addresses (loopback first, then
+     * every LAN IP). Some VPN/TUN setups intercept plain-http loopback traffic,
+     * which made a live server look dead from inside the app — probing the LAN IP
+     * too keeps the check immune to that.
+     */
+    fun isHealthy(port: Int, timeoutMs: Int = 700): Boolean =
+        healthCandidates(port).any { host -> probeHealth(host, port, timeoutMs) }
+
+    private fun healthCandidates(port: Int): List<String> {
+        val out = mutableListOf("127.0.0.1")
+        try {
+            val en = java.net.NetworkInterface.getNetworkInterfaces() ?: return out
+            while (en.hasMoreElements()) {
+                en.nextElement().inetAddresses.asSequence()
+                    .filter { !it.isLoopbackAddress && it.address.size == 4 }
+                    .forEach { out.add(it.hostAddress ?: "") }
+            }
+        } catch (_: Exception) { }
+        return out.filter { it.isNotEmpty() }.distinct()
+    }
+
+    private fun probeHealth(host: String, port: Int, timeoutMs: Int): Boolean = try {
+        val conn = URL("http://$host:$port/healthz").openConnection() as HttpURLConnection
         conn.connectTimeout = timeoutMs
         conn.readTimeout = timeoutMs
         conn.requestMethod = "GET"
@@ -100,6 +122,7 @@ object NodeRuntime {
             val p = preferred + offset
             try {
                 java.net.ServerSocket().use { s ->
+                    s.reuseAddress = true // TIME_WAIT from the last session must not fake "busy"
                     s.bind(java.net.InetSocketAddress(p))
                     return p
                 }

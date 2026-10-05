@@ -272,15 +272,23 @@ class GameActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- back & immersive
 
     /**
-     * Back / edge-swipe simply leaves the game (standard Android behaviour); the
-     * embedded server keeps running under the foreground service, so re-entering
-     * via 「开始游戏」 is instant. The touch UI has its own close buttons, so the
-     * shell never needs to fake an Esc keypress.
+     * Back / edge-swipe asks twice before leaving (防误触): the first press only
+     * shows a hint, the second within 2 s finishes the game page. The embedded
+     * server keeps running under the foreground service either way, so re-entering
+     * via 「开始游戏」 is instant.
      */
+    private var lastBackAt = 0L
+
     @Deprecated("Deprecated in Java")
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        finish()
+        val now = System.currentTimeMillis()
+        if (now - lastBackAt < 2_000) {
+            finish()
+            return
+        }
+        lastBackAt = now
+        android.widget.Toast.makeText(this, "再按一次退出游戏（服务器保持运行）", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     private fun immersive() {

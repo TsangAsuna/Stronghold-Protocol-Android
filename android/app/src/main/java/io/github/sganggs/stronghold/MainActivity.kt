@@ -196,16 +196,23 @@ class MainActivity : AppCompatActivity() {
 
         // A server left running from the previous game (e.g. backed out of GameActivity)
         // is reused as-is — second tap re-enters instantly instead of failing on ports.
-        (NodeRuntime.currentState as? NodeRuntime.State.Running)?.let { running ->
-            if (NodeRuntime.isHealthy(running.port)) {
-                DebugLog.i("host", "reusing running server on port ${running.port}")
-                status.text = "服务器已在运行 · 端口 ${running.port}"
-                updateLanHint()
-                NodeService.start(this, running.port)
-                discovery = discovery ?: LanDiscovery(this) { }.also { it.register(running.port) }
-                GameActivity.start(this, "http://127.0.0.1:${running.port}/")
-                return
+        when (val s = NodeRuntime.currentState) {
+            is NodeRuntime.State.Running, is NodeRuntime.State.Starting -> {
+                val existingPort = when (s) {
+                    is NodeRuntime.State.Running -> s.port
+                    else -> (s as NodeRuntime.State.Starting).port
+                }
+                if (NodeRuntime.isHealthy(existingPort)) {
+                    DebugLog.i("host", "reusing running server on port $existingPort")
+                    status.text = "服务器已在运行 · 端口 $existingPort"
+                    updateLanHint()
+                    NodeService.start(this, existingPort)
+                    discovery = discovery ?: LanDiscovery(this) { }.also { it.register(existingPort) }
+                    GameActivity.start(this, "http://127.0.0.1:$existingPort/")
+                    return
+                }
             }
+            else -> { }
         }
 
         val port = NodeRuntime.freePort(prefs.getInt("port", 3000))
@@ -214,11 +221,17 @@ class MainActivity : AppCompatActivity() {
         status.text = getString(R.string.status_starting_server)
 
         val root = AssetInstaller.nodeRoot(applicationContext)
-        NodeRuntime.ensureStarted(root, DebugLog.nodeLogFile, port)
-        NodeRuntime.awaitHealthy(port, 20_000) { ok ->
+        val state = NodeRuntime.ensureStarted(root, DebugLog.nodeLogFile, port)
+        // always poll the port the runtime actually committed to, never the probed one
+        val pollPort = when (state) {
+            is NodeRuntime.State.Running -> state.port
+            is NodeRuntime.State.Starting -> state.port
+            else -> port
+        }
+        NodeRuntime.awaitHealthy(pollPort, 20_000) { ok ->
             runOnUiThread {
                 if (ok) {
-                    status.text = "服务器已就绪 · 端口 $port"
+                    status.text = "服务器已就绪 · 端口 $pollPort"
                     updateLanHint()
                     if (Build.VERSION.SDK_INT >= 33 &&
                         ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -226,13 +239,13 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
                     }
-                    NodeService.start(this, port)
-                    discovery = discovery ?: LanDiscovery(this) { }.also { it.register(port) }
-                    GameActivity.start(this, "http://127.0.0.1:$port/")
+                    NodeService.start(this, pollPort)
+                    discovery = discovery ?: LanDiscovery(this) { }.also { it.register(pollPort) }
+                    GameActivity.start(this, "http://127.0.0.1:$pollPort/")
                 } else {
                     val tail = tailOf(DebugLog.nodeLogFile, 500)
                     status.text = getString(R.string.status_start_failed, tail)
-                    DebugLog.e("host", "server failed to become healthy; node.log tail:\n$tail")
+                    DebugLog.e("host", "server failed to become healthy on port $pollPort; node.log tail:\n$tail")
                 }
             }
         }

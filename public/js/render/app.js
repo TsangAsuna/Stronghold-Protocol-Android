@@ -1700,25 +1700,34 @@ export async function createFieldView(host, options = {}) {
     const now = performance.now();
     // the landing sequence (see enterBattle): first frame settled → play each deploy clip
     if (landingPlan && !landingFired) {
-      landingFired = true;
-      const plan = landingPlan;
-      landingPlan = null;
-      if (performance.now() - plan.at < 3000) {
-        // allies visible on the first battle frame = the operators carried over from the prep board
-        const all = [...views.values()];
-        console.warn('[landing] fire-check: views=' + all.length + ' allies=' + all.filter((vv) => vv.alive && !vv.down && vv.onDeploy).length + ' T=' + (performance.now() - plan.at).toFixed(0));
-        const allies = all.filter((vv) => vv.alive && !vv.down && vv.onDeploy);
-        allies.forEach((vv, i) => {
+      const all = [...views.values()];
+      const allies = all.filter((vv) => vv.alive && !vv.down && vv.onDeploy);
+      // 视图尚未从首帧快照创建（换场清空后）：保持武装，下一帧重试
+      if (allies.length > 0) {
+        landingFired = true;
+        const plan = landingPlan;
+        landingPlan = null;
+        if (performance.now() - plan.at < 8000) {
+          // 官方演出：先全部收起，再按顺序逐个落地（部署片段 + 落地光效）
+          const hide = (vv, on) => {
+            if (vv.actor?.view) vv.actor.view.visible = !on;
+            else if (vv.actor?.container) vv.actor.container.visible = !on;
+            else if (vv.view) vv.view.visible = !on;
+          };
+          allies.forEach((vv) => { hide(vv, true); vv._landingHold = performance.now() + 400 + allies.length * 220; });
+          allies.forEach((vv, i) => {
+            setTimeout(() => {
+              if (!vv.alive || vv.down) { hide(vv, false); return; }
+              hide(vv, false);
+              vv.fadeIn = 0;
+              vv.onDeploy?.();
+              fx.deploy(vv);
+            }, 300 + i * 220);
+          });
           setTimeout(() => {
-            console.warn('[landing] clip ' + i);
-            if (!vv.alive || vv.down) return;
-            vv._landingHold = performance.now() + 700; // hold the sim-sync override while the clip plays
-            vv.onDeploy?.();
-          }, 250 + i * 110);
-        });
-        setTimeout(() => {
-          try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
-        }, 1300);
+            try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+          }, 300 + allies.length * 220 + 200);
+        }
       }
     }
     for (const [id, v] of views) {

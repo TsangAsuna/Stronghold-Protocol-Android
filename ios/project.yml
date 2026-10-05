@@ -48,6 +48,8 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
+        UIBackgroundModes:
+          - audio    # BGM 播放期间后台不被冻结（保活：挂后台时服务器继续服务朋友）
         UIFileSharingEnabled: true          # 「文件」App 可直取 Documents/logs 排障
         LSSupportsOpeningDocumentsInPlace: true
         NSLocalNetworkUsageDescription: "用于在同一 Wi-Fi 内发现并连接游戏房主（局域网联机）"

@@ -1,6 +1,8 @@
-// HomeViewController.swift — launcher: install resources, host, join.
-// 「加入对局」 presents a standard alert with Bonjour-discovered hosts (tap to
-// fill) plus a manual address field — same interaction contract as Android.
+// HomeViewController.swift — the iOS shell is a server manager + browser
+// bridge, NOT a webview: iOS 15.1's WKWebView cannot run this game properly,
+// while Safari (and Gecko-based Reynard) can. The shell hosts the Node server,
+// keeps itself alive in the background with a silent audio track, discovers
+// LAN hosts via Bonjour and hands the game URL to the system browser.
 
 import UIKit
 
@@ -13,8 +15,22 @@ final class HomeViewController: UIViewController {
     private let hostButton = UIButton(type: .system)
     private let joinButton = UIButton(type: .system)
     private let hintLabel = UILabel()
+
+    // hosting state UI
+    private let urlLabel = UILabel()
+    private let safariButton = UIButton(type: .system)
+    private let copyButton = UIButton(type: .system)
+    private let stopButton = UIButton(type: .system)
+
     private var busy = false
     private var browser: LanBrowser?
+    private var hostingPort: Int?
+    private var hostingBox: UIStackView?
+
+    private var gameURL: URL? {
+        guard let port = hostingPort else { return nil }
+        return URL(string: "http://127.0.0.1:\(port)/")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -33,9 +49,10 @@ final class HomeViewController: UIViewController {
         title.translatesAutoresizingMaskIntoConstraints = false
 
         let subtitle = UILabel()
-        subtitle.text = "内置服务器 · 局域网联机 · 未签名构建（TrollStore 直装 / 自签）"
+        subtitle.text = "服务器壳 · 游戏在 Safari / Reynard 中游玩（iOS 15 的内嵌 WebView 跑不动它）"
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabel
+        subtitle.numberOfLines = 0
         subtitle.translatesAutoresizingMaskIntoConstraints = false
 
         statusLabel.text = "正在检查资源…"
@@ -47,26 +64,53 @@ final class HomeViewController: UIViewController {
         activity.isHidden = true
         activity.translatesAutoresizingMaskIntoConstraints = false
 
-        hostButton.setTitle("开始游戏（本机开服）", for: .normal)
+        hostButton.setTitle("本机开服（房间服务器）", for: .normal)
         joinButton.setTitle("加入对局（自动发现 / 输入地址）", for: .normal)
         styleButton(hostButton, filled: true)
         styleButton(joinButton, filled: false)
+
+        urlLabel.font = .monospacedSystemFont(ofSize: 15, weight: .semibold)
+        urlLabel.textColor = UIColor(red: 0.208, green: 0.816, blue: 0.729, alpha: 1)
+        urlLabel.numberOfLines = 0
+        urlLabel.isUserInteractionEnabled = true
+        urlLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        safariButton.setTitle("▶ 在 Safari 中打开游戏", for: .normal)
+        copyButton.setTitle("复制地址", for: .normal)
+        stopButton.setTitle("停止服务器并退出", for: .normal)
+        for b in [safariButton, copyButton, stopButton] {
+            b.titleLabel?.font = .systemFont(ofSize: 14)
+            b.translatesAutoresizingMaskIntoConstraints = false
+        }
+        safariButton.backgroundColor = UIColor(red: 0.208, green: 0.816, blue: 0.729, alpha: 1)
+        safariButton.setTitleColor(.black, for: .normal)
+        safariButton.layer.cornerRadius = 10
+        safariButton.heightAnchor.constraint(equalToConstant: 46).isActive = true
 
         hintLabel.numberOfLines = 0
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabel
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        for v in [title, subtitle, statusLabel, activity, hostButton, joinButton, hintLabel] {
+        let hostingBox = UIStackView(arrangedSubviews: [urlLabel, safariButton, copyButton, stopButton])
+        hostingBox.axis = .vertical
+        hostingBox.spacing = 10
+        hostingBox.translatesAutoresizingMaskIntoConstraints = false
+        hostingBox.isHidden = true
+        self.hostingBox = hostingBox
+
+        for v in [title, subtitle, statusLabel, activity, hostButton, joinButton, hostingBox, hintLabel] {
             view.addSubview(v)
         }
 
         NSLayoutConstraint.activate([
             title.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
 
             subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 4),
             subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
 
             statusLabel.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 14),
             statusLabel.leadingAnchor.constraint(equalTo: title.leadingAnchor),
@@ -85,13 +129,20 @@ final class HomeViewController: UIViewController {
             joinButton.trailingAnchor.constraint(equalTo: hostButton.trailingAnchor),
             joinButton.heightAnchor.constraint(equalToConstant: 48),
 
-            hintLabel.topAnchor.constraint(equalTo: joinButton.bottomAnchor, constant: 12),
+            hostingBox.topAnchor.constraint(equalTo: joinButton.bottomAnchor, constant: 18),
+            hostingBox.leadingAnchor.constraint(equalTo: hostButton.leadingAnchor),
+            hostingBox.trailingAnchor.constraint(equalTo: hostButton.trailingAnchor),
+
+            hintLabel.topAnchor.constraint(equalTo: hostingBox.bottomAnchor, constant: 12),
             hintLabel.leadingAnchor.constraint(equalTo: hostButton.leadingAnchor),
             hintLabel.trailingAnchor.constraint(equalTo: hostButton.trailingAnchor),
         ])
 
         hostButton.addTarget(self, action: #selector(startHost), for: .touchUpInside)
         joinButton.addTarget(self, action: #selector(joinTapped), for: .touchUpInside)
+        safariButton.addTarget(self, action: #selector(openInSafari), for: .touchUpInside)
+        copyButton.addTarget(self, action: #selector(copyAddress), for: .touchUpInside)
+        stopButton.addTarget(self, action: #selector(stopServerTapped), for: .touchUpInside)
     }
 
     private func styleButton(_ b: UIButton, filled: Bool) {
@@ -143,19 +194,17 @@ final class HomeViewController: UIViewController {
         if let s = status { statusLabel.text = s }
     }
 
-    // ------------------------------------------------------------ flows
+    // ------------------------------------------------------------ host flow
 
     @objc private func startHost() {
         if busy { return }
         setBusy(true, "正在启动本机服务器…")
         // health probes block up to seconds per address — keep them off the main thread
         DispatchQueue.global(qos: .userInitiated).async {
-            // reuse a server left running from the previous game
             if case let .running(port) = NodeRuntime.shared.state, NodeRuntime.shared.isHealthy(port) {
                 DispatchQueue.main.async {
                     self.setBusy(false, "服务器已在运行 · 端口 \(port)")
-                    HostAdvertiser.shared.start(port: port)
-                    self.openGame(port: port)
+                    self.enterHosting(port: port)
                 }
                 return
             }
@@ -175,10 +224,8 @@ final class HomeViewController: UIViewController {
             NodeRuntime.shared.awaitHealthy(port: pollPort, timeoutMs: 20_000) { ok in
                 DispatchQueue.main.async {
                     if ok {
-                        self.setBusy(false, "服务器已就绪 · 端口 \(pollPort)")
-                        self.hintLabel.text = "朋友的浏览器打开 \(NodeRuntime.localIPv4Addresses().map { "http://\($0):\(pollPort)" }.joined(separator: " 或 ")) 即可加入"
-                        HostAdvertiser.shared.start(port: pollPort)
-                        self.openGame(port: pollPort)
+                        self.setBusy(false, "服务器运行中 · 端口 \(pollPort)")
+                        self.enterHosting(port: pollPort)
                     } else {
                         self.setBusy(false, "服务器启动失败，详见「文件」App →卫戍协议 → logs/node.log")
                     }
@@ -187,12 +234,69 @@ final class HomeViewController: UIViewController {
         }
     }
 
+    /** Switch to the hosting screen: address + browser bridge + keep-alive. */
+    private func enterHosting(port: Int) {
+        hostingPort = port
+        hostButton.isHidden = true
+        joinButton.isHidden = true
+
+        let lan = NodeRuntime.localIPv4Addresses().map { "http://\($0):\(port)" }
+        urlLabel.text = "本机地址：\n" + lan.joined(separator: "\n")
+        hintLabel.text = "把上面的地址发给朋友（浏览器打开即可加入）；或用下面的按钮在本机打开游戏。\n后台时保持静音播放以维持服务器运行。"
+
+        UIView.animate(withDuration: 0.2) {
+            self.view.layoutIfNeeded()
+        }
+        hostingBoxVisible(true)
+        SilentAudioKeeper.shared.start()
+        HostAdvertiser.shared.start(port: port)
+        DebugLog.i("host", "hosting on port \(port) — keep-alive + advertiser on")
+    }
+
+    private func hostingBoxVisible(_ visible: Bool) {
+        hostingBox?.isHidden = !visible
+    }
+
+    @objc private func openInSafari() {
+        guard let url = gameURL ?? joinedURL() else { return }
+        // Safari plays this game perfectly; the shell stays alive in the background
+        UIApplication.shared.open(url, options: [:]) { ok in
+            DebugLog.i("bridge", "opened in browser: \(ok)")
+        }
+    }
+
+    private func joinedURL() -> URL? {
+        guard let raw = prefs.string(forKey: "last_host"), !raw.isEmpty else { return nil }
+        return URL(string: raw.hasPrefix("http") ? raw : "http://\(raw)")
+    }
+
+    @objc private func copyAddress() {
+        guard let text = urlLabel.text else { return }
+        UIPasteboard.general.string = text.replacingOccurrences(of: "本机地址：\n", with: "")
+        Toast("已复制")
+    }
+
+    @objc private func stopServerTapped() {
+        let alert = UIAlertController(title: nil, message: "停止服务器并退出 App？朋友会断开连接。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "停止并退出", style: .destructive) { _ in
+            SilentAudioKeeper.shared.stop()
+            HostAdvertiser.shared.stop()
+            exit(0)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func Toast(_ text: String) {
+        let alert = UIAlertController(title: nil, message: text, preferredStyle: .alert)
+        present(alert, animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { alert.dismiss(animated: true) }
+    }
+
     // ---------------------------------------------------------------- join
 
     @objc private func joinTapped() {
         if busy { return }
-        // Discovered hosts connect DIRECTLY on tap — a UIAlertAction always
-        // dismisses its alert, so "fill the field" is not an option here.
         let alert = UIAlertController(
             title: "加入对局",
             message: "正在搜索同一 Wi-Fi 的房主…\n（也可手动输入地址）",
@@ -210,15 +314,13 @@ final class HomeViewController: UIViewController {
                     alert.addAction(UIAlertAction(title: "\(host.name)  ·  \(key)", style: .default) { [weak self] _ in
                         self?.browser?.stop()
                         self?.prefs.set(key, forKey: "last_host")
-                        // present AFTER the alert finishes dismissing — presenting
-                        // mid-dismissal is the flaky/crashy window
                         DispatchQueue.main.async {
-                            self?.presentGame(url: "http://\(key)/")
+                            self?.joinInBrowser(key: key)
                         }
                     })
                 }
                 if added.count > 0 {
-                    alert.message = "发现房主：点击直接连接"
+                    alert.message = "发现房主：点击在 Safari 中打开"
                 }
             }
         }
@@ -249,8 +351,8 @@ final class HomeViewController: UIViewController {
             field.autocorrectionType = .no
             field.autocapitalizationType = .none
         }
-        alert.addAction(UIAlertAction(title: "连接", style: .default) { [weak self] _ in
-            DispatchQueue.main.async { self?.connect(from: alert.textFields?.first?.text) }
+        alert.addAction(UIAlertAction(title: "在 Safari 中打开", style: .default) { [weak self] _ in
+            self?.connect(from: alert.textFields?.first?.text)
         })
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)
@@ -262,23 +364,18 @@ final class HomeViewController: UIViewController {
             statusLabel.text = "请输入房主地址"
             return
         }
-        let withScheme = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") ? trimmed : "http://\(trimmed)"
-        guard let url = URL(string: withScheme), let host = url.host, !host.isEmpty else {
+        prefs.set(trimmed, forKey: "last_host")
+        joinInBrowser(key: trimmed)
+    }
+
+    /** Hand the game URL to Safari — the shell stays out of the render path. */
+    private func joinInBrowser(key: String) {
+        let withScheme = key.hasPrefix("http://") || key.hasPrefix("https://") ? key : "http://\(key)"
+        guard let url = URL(string: withScheme), url.host != nil else {
             statusLabel.text = "地址无效，示例：192.168.1.5:3000"
             return
         }
-        prefs.set(trimmed, forKey: "last_host")
-        DebugLog.i("join", "connecting to \(withScheme)")
-        presentGame(url: withScheme)
-    }
-
-    private func openGame(port: Int) {
-        presentGame(url: "http://127.0.0.1:\(port)/")
-    }
-
-    private func presentGame(url: String) {
-        let game = GameViewController(url: url)
-        game.modalPresentationStyle = .fullScreen
-        present(game, animated: false)
+        DebugLog.i("join", "opening in browser: \(withScheme)")
+        UIApplication.shared.open(url, options: [:])
     }
 }

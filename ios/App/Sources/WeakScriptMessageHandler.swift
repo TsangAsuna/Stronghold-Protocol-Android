@@ -6,7 +6,7 @@ import WebKit
 
 final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
 
-    private weak let target: WKScriptMessageHandler?
+    private weak var target: WKScriptMessageHandler?
 
     init(_ target: WKScriptMessageHandler) {
         self.target = target

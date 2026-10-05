@@ -49,6 +49,9 @@ targets:
         UIRequiresFullScreen: true
         UIFileSharingEnabled: true          # 「文件」App 可直取 Documents/logs 排障
         LSSupportsOpeningDocumentsInPlace: true
+        NSLocalNetworkUsageDescription: "用于在同一 Wi-Fi 内发现并连接游戏房主（局域网联机）"
+        NSBonjourServices:
+          - "_stronghold._tcp"
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight

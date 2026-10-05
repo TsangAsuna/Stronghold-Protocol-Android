@@ -33,6 +33,7 @@ final class GameViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        setNeedsStatusBarAppearanceUpdate()
 
         let config = WKWebViewConfiguration()
         let prefs = WKWebpagePreferences()
@@ -43,7 +44,7 @@ final class GameViewController: UIViewController {
         config.defaultWebpagePreferences = prefs
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
-        config.userContentController.add(self, name: "console")
+        config.userContentController.add(WeakScriptMessageHandler(self), name: "console")
         config.userContentController.addUserScript(WKUserScript(
             source: Self.bootstrapJS,
             injectionTime: .atDocumentStart,
@@ -60,12 +61,16 @@ final class GameViewController: UIViewController {
         view.addSubview(webView)
 
         buildOverlay()
+        buildCloseButton()
         applyEdgePadding()
 
         webView.load(URLRequest(url: URL(string: urlString)!))
         UIApplication.shared.isIdleTimerDisabled = true
         DebugLog.i("webview", "loading \(urlString)")
     }
+
+    override var prefersStatusBarHidden: Bool { true }
+    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
 
     // ---------------------------------------------------------------- setup
 
@@ -93,8 +98,10 @@ final class GameViewController: UIViewController {
       function harden(){
         try {
           var style = document.createElement('style');
-          // long press = operator details in the game; kill the iOS callout/select UI
-          style.textContent = '*{-webkit-touch-callout:none!important;-webkit-user-select:none!important;}';
+          // long press = operator details in the game; kill the iOS callout/select
+          // UI — but inputs must keep text selection or the keyboard never focuses
+          style.textContent = '*{-webkit-touch-callout:none!important;-webkit-user-select:none!important}' +
+            'input,textarea,[contenteditable]{-webkit-user-select:text!important;-webkit-user-select:auto!important}';
           document.documentElement.appendChild(style);
         } catch(e) {}
       }
@@ -115,12 +122,65 @@ final class GameViewController: UIViewController {
     // ------------------------------------------------------- irregular screens
 
     /** User-tunable clearance so game UI keeps clear of notches (px per side). */
+    private var edgePadding: Int { UserDefaults.standard.integer(forKey: "edge_padding_px") }
+
     private func applyEdgePadding() {
-        let px = UserDefaults.standard.integer(forKey: "edge_padding_px")
+        let px = edgePadding
         guard px > 0 else { return }
         webView.frame = view.bounds.insetBy(dx: CGFloat(px), dy: 0)
         DebugLog.i("webview", "edge padding applied: \(px)px each side")
     }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // re-apply after rotation / initial layout so the inset stays correct
+        applyEdgePadding()
+    }
+
+    // ------------------------------------------------------------- close
+
+    /**
+     * iOS has no hardware back: a small floating ✕ gives the escape hatch.
+     * First tap asks for confirmation (防误触, same contract as Android's
+     * double-back); the server keeps running in the background either way.
+     */
+    private func buildCloseButton() {
+        let close = UIButton(type: .system)
+        close.setTitle("✕", for: .normal)
+        close.titleLabel?.font = .boldSystemFont(ofSize: 14)
+        close.setTitleColor(.white, for: .normal)
+        close.backgroundColor = UIColor(white: 0, alpha: 0.35)
+        close.layer.cornerRadius = 14
+        close.accessibilityLabel = "退出游戏"
+        close.translatesAutoresizingMaskIntoConstraints = false
+        close.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        view.addSubview(close)
+        NSLayoutConstraint.activate([
+            close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            close.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 10),
+            close.widthAnchor.constraint(equalToConstant: 28),
+            close.heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    @objc private func closeTapped() {
+        let now = Date().timeIntervalSince1970
+        if now - lastCloseTap < 2 {
+            dismiss(animated: false) {
+                DebugLog.i("lifecycle", "game dismissed (server keeps running)")
+            }
+            return
+        }
+        lastCloseTap = now
+        let alert = UIAlertController(title: nil, message: "退出游戏？（服务器保持运行，可随时重进）", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "退出", style: .destructive) { [weak self] _ in
+            self?.dismiss(animated: false)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private var lastCloseTap: TimeInterval = 0
 
     // ------------------------------------------------------- boot watchdog
 

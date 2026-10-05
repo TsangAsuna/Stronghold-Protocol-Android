@@ -149,6 +149,7 @@ final class HomeViewController: UIViewController {
         if busy { return }
         // reuse a server left running from the previous game
         if case let .running(port) = NodeRuntime.shared.state, NodeRuntime.shared.isHealthy(port) {
+            HostAdvertiser.shared.start(port: port)
             openGame(port: port)
             return
         }
@@ -164,6 +165,7 @@ final class HomeViewController: UIViewController {
                 if ok {
                     self.setBusy(false, "服务器已就绪 · 端口 \(pollPort)")
                     self.hintLabel.text = "朋友的浏览器打开 \(NodeRuntime.localIPv4Addresses().map { "http://\($0):\(pollPort)" }.joined(separator: " 或 ")) 即可加入"
+                    HostAdvertiser.shared.start(port: pollPort)
                     self.openGame(port: pollPort)
                 } else {
                     self.setBusy(false, "服务器启动失败，详见「文件」App →卫戍协议 → logs/node.log")
@@ -176,10 +178,48 @@ final class HomeViewController: UIViewController {
 
     @objc private func joinTapped() {
         if busy { return }
+        // Discovered hosts connect DIRECTLY on tap — a UIAlertAction always
+        // dismisses its alert, so "fill the field" is not an option here.
         let alert = UIAlertController(
             title: "加入对局",
-            message: "自动发现同一 Wi-Fi 的房主（点选即填），或手动输入地址",
+            message: "正在搜索同一 Wi-Fi 的房主…\n（也可手动输入地址）",
             preferredStyle: .alert)
+
+        let added = NSMutableSet()
+        browser = LanBrowser()
+        browser?.onHosts = { [weak self, weak alert] hosts in
+            guard let self, let alert else { return }
+            DispatchQueue.main.async {
+                for host in hosts {
+                    let key = "\(host.host):\(host.port)"
+                    guard !added.contains(key) else { continue }
+                    added.add(key)
+                    alert.addAction(UIAlertAction(title: "\(host.name)  ·  \(key)", style: .default) { [weak self] _ in
+                        self?.browser?.stop()
+                        self?.prefs.set(key, forKey: "last_host")
+                        self?.presentGame(url: "http://\(key)/")
+                    })
+                }
+                if added.count > 0 {
+                    alert.message = "发现房主：点击直接连接"
+                }
+            }
+        }
+
+        alert.addAction(UIAlertAction(title: "手动输入地址", style: .default) { [weak self] _ in
+            self?.showManualEntry()
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
+            self?.browser?.stop()
+        })
+
+        browser?.start()
+        present(alert, animated: true)
+    }
+
+    private func showManualEntry() {
+        browser?.stop()
+        let alert = UIAlertController(title: "手动输入房主地址", message: nil, preferredStyle: .alert)
         alert.addTextField { field in
             field.placeholder = "192.168.x.x:3000"
             field.text = UserDefaults.standard.string(forKey: "last_host")
@@ -190,29 +230,11 @@ final class HomeViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "连接", style: .default) { [weak self] _ in
             self?.connect(from: alert.textFields?.first?.text)
         })
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
-            self?.browser?.stop()
-        })
-
-        let added = NSMutableSet()
-        browser = LanBrowser()
-        browser?.onHosts = { [weak alert] hosts in
-            guard let alert else { return }
-            for host in hosts {
-                let key = "\(host.host):\(host.port)"
-                guard !added.contains(key) else { continue }
-                added.add(key)
-                alert.addAction(UIAlertAction(title: "\(host.name)  ·  \(key)", style: .default) { _ in
-                    alert.textFields?.first?.text = key
-                })
-            }
-        }
-        browser?.start()
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)
     }
 
     private func connect(from raw: String?) {
-        browser?.stop()
         let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             statusLabel.text = "请输入房主地址"

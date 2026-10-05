@@ -49,6 +49,7 @@ jobs:
       - name: Build APK (Gradle wrapper, AGP 8.13 / Gradle 9.5)
         working-directory: android
         run: |
+          sed -i 's/\r$//' gradlew   # a CRLF gradlew makes sh fail with "redirection unexpected"
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 

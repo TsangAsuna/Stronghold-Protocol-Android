@@ -1,0 +1,4 @@
+# shell scripts must stay LF or sh fails on checkout under Windows
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf

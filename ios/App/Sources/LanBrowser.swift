@@ -17,6 +17,7 @@ final class LanBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate 
     private var pending: [NetService] = []
     private var hosts: [Host] = []
     var onHosts: (([Host]) -> Void)?
+    var onError: ((String) -> Void)?
 
     func start() {
         browser.delegate = self
@@ -28,6 +29,15 @@ final class LanBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate 
         browser.stop()
         pending.removeAll()
         hosts.removeAll()
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotStartBrowsingForDomain errorDict: [String: NSNumber]) {
+        // denied local-network permission / blocked multicast — without this the
+        // join alert claims to be searching forever
+        DebugLog.e("bonjour", "browse failed to start: \(errorDict)")
+        DispatchQueue.main.async { [weak self] in
+            self?.onError?("搜索失败：请允许「本地网络」权限，或手动输入房主地址")
+        }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {

@@ -12,7 +12,9 @@ final class HostAdvertiser: NSObject, NetServiceDelegate {
 
     func start(port: Int) {
         stop()
-        let name = "卫戍协议·" + UIDevice.current.name
+        // mDNS labels max out at 63 UTF-8 bytes — CJK device names overflow fast
+        var name = "卫戍协议·" + UIDevice.current.name
+        while name.utf8.count > 63, name.count > 1 { name.removeLast() }
         let service = NetService(domain: "", type: "_stronghold._tcp.", name: name, port: Int32(port))
         service.delegate = self
         service.publish()

@@ -29,13 +29,19 @@ final class DebugLog {
 
     /** WebView console (console.log/warn/error from the game) → file. */
     static func console(_ level: String, _ message: String, _ source: String) {
-        let lv: LogLevel = (level == "error") ? .error : (level == "warning") ? .warn : .info
+        let lv: LogLevel
+        switch level {
+        case "error": lv = .error
+        case "warn", "warning": lv = .warn
+        default: lv = .info
+        }
         shared.write(lv, "webview", "\(message)  (\(source))")
     }
 
     private func write(_ level: LogLevel, _ tag: String, _ msg: String) {
-        let line = "\(fmt.string(from: Date())) [\(level.rawValue)/\(tag)] \(msg)\n"
+        // DateFormatter is not thread-safe — format on the serial queue itself
         queue.async {
+            let line = "\(self.fmt.string(from: Date())) [\(level.rawValue)/\(tag)] \(msg)\n"
             let url = self.logDir.appendingPathComponent("debug.log")
             if let handle = try? FileHandle(forWritingTo: url) {
                 defer { try? handle.close() }

@@ -25,6 +25,9 @@ final class GameViewController: UIViewController {
 
     init(url: String) {
         self.urlString = url
+        // P0: without this the navigation policy cancels the very first load of a
+        // LAN host (192.168.x.x) and hands it to Safari — join mode was dead.
+        self.host = URL(string: url)?.host ?? "127.0.0.1"
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -54,6 +57,7 @@ final class GameViewController: UIViewController {
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
+        webView.scrollView.keyboardDismissMode = .interactive
         webView.allowsLinkPreview = false
         webView.isOpaque = true
         webView.backgroundColor = UIColor(red: 0.043, green: 0.063, blue: 0.075, alpha: 1)
@@ -64,7 +68,7 @@ final class GameViewController: UIViewController {
         buildCloseButton()
         applyEdgePadding()
 
-        webView.load(URLRequest(url: URL(string: urlString)!))
+        webView.load(URLRequest(url: initialURL))
         UIApplication.shared.isIdleTimerDisabled = true
         DebugLog.i("webview", "loading \(urlString)")
     }
@@ -119,6 +123,31 @@ final class GameViewController: UIViewController {
         "w:window.innerWidth||0,h:window.innerHeight||0," +
         "ua:navigator.userAgent.slice(0,120)})}catch(e){return JSON.stringify({err:String(e)})}})()"
 
+    /// iPadOS 15's WebKit is old: default the board to the 2D renderer (an
+    /// officially supported downgrade per the game's README) so the map always
+    /// paints; the 3D board stays available through the game's own settings.
+    private var initialURL: URL {
+        let base = urlString
+        let hasBoard = base.contains("board=")
+        let sep = base.contains("?") ? "&" : "?"
+        return URL(string: hasBoard ? base : "\(base)\(sep)board=2d")!
+    }
+
+    /** Snapshot the current page into Documents/screenshots — ground truth for
+        any layout report (e.g. icon alignment) without needing a Mac. */
+    private func captureSnapshot(_ tag: String) {
+        webView.takeSnapshot(with: nil) { image, _ in
+            guard let image else { return }
+            let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("screenshots", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let stamp = Int(Date().timeIntervalSince1970)
+            if let data = image.pngData() {
+                try? data.write(to: dir.appendingPathComponent("\(tag)-\(stamp).png"))
+                DebugLog.i("webview", "snapshot saved: \(tag)-\(stamp).png")
+            }
+        }
+    }
     // ------------------------------------------------------- irregular screens
 
     /** User-tunable clearance so game UI keeps clear of notches (px per side). */
@@ -198,6 +227,7 @@ final class GameViewController: UIViewController {
                 return
             }
             DebugLog.i("watchdog", "probe: \(obj)")
+            self.captureSnapshot("probe-\(self.probeAttempts)")
             if obj["booted"] as? Bool == true {
                 self.hideOverlay()
                 return
@@ -277,7 +307,7 @@ final class GameViewController: UIViewController {
 
     @objc private func reloadTapped() {
         hideOverlay()
-        webView.load(URLRequest(url: URL(string: urlString)!))
+        webView.load(URLRequest(url: initialURL))
     }
 
     @objc private func compatTapped() {
@@ -303,16 +333,6 @@ final class GameViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         UIApplication.shared.isIdleTimerDisabled = false
-        webView?.evaluateJavaScript(
-            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.suspend&&globalThis.__SP__.audio.suspend()}catch(e){}",
-            completionHandler: nil)
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        webView?.evaluateJavaScript(
-            "try{globalThis.__SP__&&globalThis.__SP__.audio&&globalThis.__SP__.audio.resume&&globalThis.__SP__.audio.resume()}catch(e){}",
-            completionHandler: nil)
     }
 }
 
@@ -323,15 +343,34 @@ extension GameViewController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let host = navigationAction.request.url?.host,
-           host == self.host || host == "127.0.0.1" || host == "localhost" {
+        guard let url = navigationAction.request.url, let host = url.host else {
+            // about:blank / blob: / same-document navigations have no host — keep them
             decisionHandler(.allow)
             return
         }
-        if let url = navigationAction.request.url {
+        if host == self.host || host == "127.0.0.1" || host == "localhost" {
+            decisionHandler(.allow)
+            return
+        }
+        // external links (GitHub, notices…) open in Safari
+        if navigationAction.targetFrame == nil || url.scheme == "http" || url.scheme == "https" {
             UIApplication.shared.open(url)
         }
         decisionHandler(.cancel)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        // unreachable host / refused connection fails PROVISIONALLY — without this
+        // the user stares at a black screen with no overlay and no watchdog
+        DebugLog.e("webview", "provisional navigation failed: \(error.localizedDescription)")
+        showOverlay("页面加载失败：\(error.localizedDescription)\n\n请确认房主设备已开服、双方在同一 Wi-Fi（或虚拟局域网）。")
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // renderer jetsam kill (this game is a 280 MB payload) — WKWebView does
+        // not reliably auto-reload; do it here like Android's onRenderProcessGone
+        DebugLog.e("webview", "web content process terminated — reloading")
+        webView.reload()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

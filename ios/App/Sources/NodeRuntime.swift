@@ -105,16 +105,22 @@ final class NodeRuntime {
             }
             if bindResult == 0 { return preferred + offset }
         }
+        DebugLog.e("net", "freePort exhausted \(tries) candidates from \(preferred) — returning preferred (node will fail visibly)")
         return preferred
     }
 
     /// Start the server if not already running/starting. Returns the committed state.
+    /// NOTE: node::Start may run exactly once per process (upstream tears down the
+    /// V8 platform on return) — after `.exited` a restart must be refused.
     @discardableResult
     func ensureStarted(root: URL, port: Int) -> State {
         switch state {
         case .starting, .running:
             return state
-        case .idle, .exited:
+        case .exited(let reason):
+            DebugLog.e("node", "refusing to restart node in-process (previous exit: \(reason ?? "?")) — relaunch the app")
+            return state
+        case .idle:
             break
         }
         if isHealthy(port) {
@@ -146,6 +152,8 @@ final class NodeRuntime {
         let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
         DispatchQueue.global(qos: .userInitiated).async {
             while Date() < deadline {
+                // a crashed node (EADDRINUSE etc.) must not keep the user waiting
+                if case .exited = self.state { completion(false); return }
                 if self.isHealthy(port) {
                     self.state = .running(port: port)
                     completion(true)

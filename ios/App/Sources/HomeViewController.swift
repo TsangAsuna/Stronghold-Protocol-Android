@@ -147,28 +147,41 @@ final class HomeViewController: UIViewController {
 
     @objc private func startHost() {
         if busy { return }
-        // reuse a server left running from the previous game
-        if case let .running(port) = NodeRuntime.shared.state, NodeRuntime.shared.isHealthy(port) {
-            HostAdvertiser.shared.start(port: port)
-            openGame(port: port)
-            return
-        }
         setBusy(true, "正在启动本机服务器…")
-        let port = NodeRuntime.freePort(3000)
-        DebugLog.i("host", "host flow started (port=\(port))")
-        let state = NodeRuntime.shared.ensureStarted(root: NodeRuntime.documentsNodeRoot, port: port)
-        var pollPort = port
-        if case let .starting(p) = state { pollPort = p }
-        if case let .running(p) = state { pollPort = p }
-        NodeRuntime.shared.awaitHealthy(port: pollPort, timeoutMs: 20_000) { ok in
-            DispatchQueue.main.async {
-                if ok {
-                    self.setBusy(false, "服务器已就绪 · 端口 \(pollPort)")
-                    self.hintLabel.text = "朋友的浏览器打开 \(NodeRuntime.localIPv4Addresses().map { "http://\($0):\(pollPort)" }.joined(separator: " 或 ")) 即可加入"
-                    HostAdvertiser.shared.start(port: pollPort)
-                    self.openGame(port: pollPort)
-                } else {
-                    self.setBusy(false, "服务器启动失败，详见「文件」App →卫戍协议 → logs/node.log")
+        // health probes block up to seconds per address — keep them off the main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            // reuse a server left running from the previous game
+            if case let .running(port) = NodeRuntime.shared.state, NodeRuntime.shared.isHealthy(port) {
+                DispatchQueue.main.async {
+                    self.setBusy(false, "服务器已在运行 · 端口 \(port)")
+                    HostAdvertiser.shared.start(port: port)
+                    self.openGame(port: port)
+                }
+                return
+            }
+            if case .exited = NodeRuntime.shared.state {
+                DispatchQueue.main.async {
+                    self.setBusy(false, "服务器进程已退出（node 每次启动只能运行一个实例），请重启 App 后再试")
+                }
+                return
+            }
+
+            let port = NodeRuntime.freePort(3000)
+            DebugLog.i("host", "host flow started (port=\(port))")
+            let state = NodeRuntime.shared.ensureStarted(root: NodeRuntime.documentsNodeRoot, port: port)
+            var pollPort = port
+            if case let .starting(p) = state { pollPort = p }
+            if case let .running(p) = state { pollPort = p }
+            NodeRuntime.shared.awaitHealthy(port: pollPort, timeoutMs: 20_000) { ok in
+                DispatchQueue.main.async {
+                    if ok {
+                        self.setBusy(false, "服务器已就绪 · 端口 \(pollPort)")
+                        self.hintLabel.text = "朋友的浏览器打开 \(NodeRuntime.localIPv4Addresses().map { "http://\($0):\(pollPort)" }.joined(separator: " 或 ")) 即可加入"
+                        HostAdvertiser.shared.start(port: pollPort)
+                        self.openGame(port: pollPort)
+                    } else {
+                        self.setBusy(false, "服务器启动失败，详见「文件」App →卫戍协议 → logs/node.log")
+                    }
                 }
             }
         }
@@ -197,12 +210,21 @@ final class HomeViewController: UIViewController {
                     alert.addAction(UIAlertAction(title: "\(host.name)  ·  \(key)", style: .default) { [weak self] _ in
                         self?.browser?.stop()
                         self?.prefs.set(key, forKey: "last_host")
-                        self?.presentGame(url: "http://\(key)/")
+                        // present AFTER the alert finishes dismissing — presenting
+                        // mid-dismissal is the flaky/crashy window
+                        DispatchQueue.main.async {
+                            self?.presentGame(url: "http://\(key)/")
+                        }
                     })
                 }
                 if added.count > 0 {
                     alert.message = "发现房主：点击直接连接"
                 }
+            }
+        }
+        browser?.onError = { [weak alert] message in
+            DispatchQueue.main.async {
+                alert?.message = message
             }
         }
 
@@ -228,7 +250,7 @@ final class HomeViewController: UIViewController {
             field.autocapitalizationType = .none
         }
         alert.addAction(UIAlertAction(title: "连接", style: .default) { [weak self] _ in
-            self?.connect(from: alert.textFields?.first?.text)
+            DispatchQueue.main.async { self?.connect(from: alert.textFields?.first?.text) }
         })
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(alert, animated: true)

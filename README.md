@@ -90,6 +90,12 @@ npm start          # 启动服务器：http://localhost:3000
 - 素材下载优先使用 GitHub，失败时自动改用 jsDelivr 镜像。
 - `npm run doctor`（即 `node tools/doctor.mjs`）可以随时诊断：Node 版本、素材是否完整、端口占用、局域网地址和防火墙。
 
+### 方式三：安卓手机（APK，手机自己开服）
+
+`android/` 目录里有一个社区移植的安卓壳（Kotlin + 嵌入式 Node.js 18 运行时 + 全屏 WebView）：**APK 把服务器嵌在 App 里**，没有电脑也能玩；同一 Wi-Fi 下的朋友用浏览器或同款 App 直接加入。目标平台 Android 16（API 36），兼容 Android 8.0+，支持 120Hz+ 高刷（可关省电）、异形屏两侧留白滑块、NSD 自动发现房主、端口自动回退与全面调试日志。安卓端思路参考 [Paper-Yuan/Stronghold-Protocol](https://github.com/Paper-Yuan/Stronghold-Protocol)（B 站 @纸鸢安好 / @Ausevay），在其经验上做了 JNI 直连、内容哈希增量解压等优化。
+
+从源码构建：`npm install && npm run assets && node scripts/pack-android.mjs && (cd android && ./gradlew assembleDebug)`，架构、联机玩法与日志诊断见 [docs/ANDROID.md](docs/ANDROID.md)。
+
 ### 系统要求
 
 | 项目 | 要求 |

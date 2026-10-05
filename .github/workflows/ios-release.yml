@@ -1,0 +1,72 @@
+name: ios-release
+
+# 未签名 iOS 构建（iPadOS 15.0+，iPhone/iPad 全方向自适应）：
+#  - 手动触发（workflow_dispatch）或推送 v* 标签时运行（macOS runner）
+#  - 产物为未签名 .ipa：TrollStore 可直装；AltStore/Sideloadly/esign 需自签
+#  - 每次运行上传构件；推 v* 标签时创建 Release 并附上 ipa
+#
+# 实验性：iOS 壳较新，构建问题会直接反映在本 workflow 的日志里。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  ipa:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies (postinstall vendors web libs)
+        run: npm ci --no-audit --no-fund
+
+      - name: Download game assets (~280 MB, resumable mirrors)
+        run: npm run assets
+
+      - name: Fetch libnode (iOS) and stage nodejs-project
+        run: node scripts/pack-ios.mjs
+
+      - name: Generate Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+
+      - name: Build unsigned .app (iOS device, arm64)
+        working-directory: ios
+        run: |
+          xcodebuild -project StrongholdProtocol.xcodeproj \
+            -target StrongholdProtocol \
+            -sdk iphoneos -configuration Release \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath build
+
+      - name: Package unsigned .ipa
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHORTSHA=$(git rev-parse --short HEAD)
+          APP=$(find ios/build/Build/Products -maxdepth 3 -name "*.app" | head -1)
+          test -n "$APP" || { echo "no .app produced"; exit 1; }
+          rm -rf Payload "Stronghold-Protocol-iOS-v${VERSION}-${SHORTSHA}-unsigned.ipa"
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry "Stronghold-Protocol-iOS-v${VERSION}-${SHORTSHA}-unsigned.ipa" Payload
+          echo "IPA=Stronghold-Protocol-iOS-v${VERSION}-${SHORTSHA}-unsigned.ipa" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IPA }}
+          path: ${{ env.IPA }}
+          if-no-files-found: error
+
+      - name: Create release and attach ipa (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.IPA }}
+          generate_release_notes: true

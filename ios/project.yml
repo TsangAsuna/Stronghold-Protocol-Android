@@ -1,0 +1,60 @@
+name: StrongholdProtocol
+options:
+  bundleIdPrefix: io.github.sganggs
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    SWIFT_OBJC_BRIDGING_HEADER: App/Sources/bridge.h
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad（iPad 全方向自适应）
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO               # 未签名构建（TrollStore 直装 / 其他工具重签）
+    ENABLE_BITCODE: NO
+    OTHER_LDFLAGS:
+      - "-lnode"
+      - "-lc++"
+      - "-lz"
+      - "-liconv"
+    LIBRARY_SEARCH_PATHS:
+      - "$(SRCROOT)/third_party/libnode"
+    HEADER_SEARCH_PATHS:
+      - "$(SRCROOT)/third_party/libnode/include"
+
+targets:
+  StrongholdProtocol:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      # node headers are for the C++ shim only — never compiled into the target
+      - path: third_party/libnode/include
+        buildPhase: none
+      # folder reference (blue): the whole game ships verbatim into the bundle
+      - path: Resources/nodejs-project
+        buildPhase: resources
+        type: folder
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 卫戍协议
+        CFBundleShortVersionString: "0.1.3"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true      # 房主是局域网 http://…：iOS 需显式放行
+        ITSAppUsesNonExemptEncryption: false

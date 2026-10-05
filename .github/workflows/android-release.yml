@@ -1,0 +1,63 @@
+name: android-release
+
+# 构建安卓 APK 并发布：
+#  - 手动触发（workflow_dispatch）或推送 v* 标签时运行
+#  - 每次运行都上传 APK 构件；推 v* 标签时自动创建 GitHub Release 并附上 APK
+#
+# 说明：APK 为 debug 签名（可直接安装侧载）。若要正式签名，把 keystore 放进
+# Secrets（SP_STORE_FILE 为 keystore 的 base64），并自行扩展 sign 步骤。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies (postinstall vendors web libs)
+        run: npm ci --no-audit --no-fund
+
+      - name: Download game assets (~280 MB, resumable mirrors)
+        run: npm run assets
+
+      - name: Pack nodejs-project for the Android shell
+        run: node scripts/pack-android.mjs
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build APK (Gradle wrapper, AGP 8.13 / Gradle 9.5)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHORTSHA=$(git rev-parse --short HEAD)
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "Stronghold-Protocol-Android-v${VERSION}-${SHORTSHA}-debug.apk"
+          echo "APK=Stronghold-Protocol-Android-v${VERSION}-${SHORTSHA}-debug.apk" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK }}
+          path: ${{ env.APK }}
+          if-no-files-found: error
+
+      - name: Create release and attach APK (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK }}
+          generate_release_notes: true

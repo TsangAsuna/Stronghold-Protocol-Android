@@ -14,6 +14,10 @@ on:
       tag:
         description: "Target release tag (created if missing)"
         required: true
+      pattern:
+        description: "Glob of artifact files to attach"
+        required: false
+        default: "**/*.ipa"
 
 permissions:
   contents: write
@@ -33,5 +37,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          files: "**/*.ipa"
+          files: ${{ inputs.pattern }}
           fail_on_unmatched_files: true

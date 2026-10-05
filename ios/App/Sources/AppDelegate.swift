@@ -13,12 +13,12 @@ enum CrashLog {
             \(exception.name.rawValue): \(exception.reason ?? "?")
             \(exception.callStackSymbols.joined(separator: "\n"))
             """
-            try? text.write(to: DebugLog.shared.logDir.appendingPathComponent("crash.log"), atomically: true, encodings: .utf8)
+            try? text.write(to: DebugLog.shared.logDir.appendingPathComponent("crash.log"), atomically: true, encoding: .utf8)
         }
         for sig in [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP] {
             signal(sig) { s in
                 let text = "\n==== \(Date()) signal \(s) ====\n"
-                try? text.write(to: DebugLog.shared.logDir.appendingPathComponent("crash.log"), atomically: true, encodings: .utf8)
+                try? text.write(to: DebugLog.shared.logDir.appendingPathComponent("crash.log"), atomically: true, encoding: .utf8)
                 signal(s, SIG_DFL)
                 raise(s)
             }

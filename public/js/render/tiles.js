@@ -744,7 +744,7 @@ export class TileField {
         const c = seg.c0 + (seg.c1 - seg.c0) * k;
         cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.07, i === 0 ? p : q);
         if (prev) {
-          g.lineStyle((0.03 + 0.11 * (i / STEPS)) * (p.s || 40) * 0.06, RED, alpha * (0.3 + 0.7 * (i / STEPS)));
+          g.lineStyle((0.06 + 0.22 * (i / STEPS)) * (p.s / 64), RED, alpha * (0.3 + 0.7 * (i / STEPS)));
           g.moveTo(prev.x, prev.y);
           g.lineTo(q.x, q.y);
         }

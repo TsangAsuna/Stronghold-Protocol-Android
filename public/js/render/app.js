@@ -1701,7 +1701,9 @@ export async function createFieldView(host, options = {}) {
       const plan = landingPlan;
       landingPlan = null;
       if (performance.now() - plan.at < 3000) {
-        try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+        setTimeout(() => {
+          try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+        }, 1300);
         plan.ids.forEach((id, i) => {
           setTimeout(() => {
 

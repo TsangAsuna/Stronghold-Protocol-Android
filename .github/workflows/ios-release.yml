@@ -35,6 +35,13 @@ jobs:
       - name: Fetch libnode (iOS) and stage nodejs-project
         run: node scripts/pack-ios.mjs
 
+      - name: Select newest Xcode (xcodegen emits the modern project format)
+        run: |
+          ls -d /Applications/Xcode*.app | sort -V
+          NEWEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "selecting $NEWEST"
+          sudo xcode-select -s "$NEWEST"
+
       - name: Generate Xcode project (XcodeGen)
         run: |
           brew install xcodegen

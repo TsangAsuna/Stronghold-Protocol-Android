@@ -1426,6 +1426,19 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
+    // official re-deploy moment: after 准备就绪 the operators land one by one (visual deploy
+    // clip per unit — the SFX already plays via announceDeploy elsewhere). The route current
+    // (meta.routes, this round's real batch routes) sweeps once at the same moment.
+    landingPlan = null;
+    landingFired = false;
+    if (meta.prep !== true && Array.isArray(meta.units)) {
+      const own = meta.units.filter((u) => u && u.side === 'ally' && u.kind !== 'device' && u.id != null);
+      if (own.length) landingPlan = { ids: own.map((u) => u.id), at: performance.now() };
+    }
+    try {
+      tiles.buildRoutes(meta.routes);
+      board3d?.buildRoutes(meta.routes);
+    } catch (e) { console.warn('route build failed', e); }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
     battleMeta = { fieldId: meta.fieldId ?? null, kind: meta.kind || 'normal', rect, stageId: meta.stageId ?? null, prep: meta.prep === true };
@@ -1641,6 +1654,8 @@ export async function createFieldView(host, options = {}) {
   }
 
   let renderT0Battle = null;   // game time of the first rendered battle frame (spawn puffs skip the initial wave)
+  let landingPlan = null;      // own units to land one-by-one at battle open (official re-deploy moment)
+  let landingFired = false;
   let downSeq = 0;             // syncBattle pass counter: a view still marked down after a pass left the `down` list
   function syncBattle(renderT) {
     if (renderT0Battle == null) renderT0Battle = renderT;
@@ -1681,6 +1696,22 @@ export async function createFieldView(host, options = {}) {
       }
     }
     const now = performance.now();
+    // the landing sequence (see enterBattle): first frame settled → play each deploy clip
+    if (landingPlan && !landingFired) {
+      landingFired = true;
+      const plan = landingPlan;
+      landingPlan = null;
+      if (performance.now() - plan.at < 3000) {
+        try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+        plan.ids.forEach((id, i) => {
+          setTimeout(() => {
+            const vv = views.get(id);
+            if (!vv || !vv.alive || vv.down) return;
+            vv.onDeploy?.(); // visual deploy clip only — the SFX already played via announceDeploy
+          }, 250 + i * 110);
+        });
+      }
+    }
     for (const [id, v] of views) {
       if (v.down && v._downSeq !== downSeq) v.setDown(null, renderT);
       if (sample.has(id) || v.down) continue;

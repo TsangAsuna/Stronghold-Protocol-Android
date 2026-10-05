@@ -237,7 +237,58 @@ export class BoardScene {
       this.root.remove(ch);
       ch.traverse?.((o) => { if (o.geometry) o.geometry.dispose(); });
     }
+    if (this.routeSweeps) {
+      for (const l of this.routeSweeps.lines) { this.root.remove(l.line); l.line.geometry.dispose(); l.line.material.dispose(); }
+      this.routeSweeps = null;
+    }
+    this.routePaths = [];
     this.meshes = {};
+  }
+
+  /**
+   * 本局批次路线（官方的红门→蓝门电流，3D 棋盘）：routes = 开战消息 meta.routes；
+   * 逐格路径优先匹配 stage.groundPaths 的 "r0,c0->r1,c1"，无则 start→checkpoints→end 直连。
+   */
+  buildRoutes(routes) {
+    this.routePaths = [];
+    this.routeSweeps = null;
+    for (const r of routes || []) {
+      if (!r || !Array.isArray(r.start) || !Array.isArray(r.end)) continue;
+      const key = `${r.start[0]},${r.start[1]}->${r.end[0]},${r.end[1]}`;
+      let pts = this.stage?.groundPaths?.[key];
+      if (!Array.isArray(pts) || pts.length < 2) {
+        pts = [r.start, ...(Array.isArray(r.checkpoints) ? r.checkpoints : []), r.end];
+      }
+      const nodes = [];
+      let total = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [r0, c0] = pts[i];
+        const [r1, c1] = pts[i + 1];
+        const d = Math.abs(r1 - r0) + Math.abs(c1 - c0);
+        if (d <= 0) continue;
+        nodes.push({ r0, c0, r1, c1, at: total, d });
+        total += d;
+      }
+      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
+    }
+  }
+
+  /** 每条路线一道红色电流扫过一次（战斗开场调用一次；1.15 s 后完全消失）。 */
+  playRouteSweeps() {
+    if (!this.routePaths?.length || this.routeSweeps) return;
+    const T = this.THREE;
+    const lines = [];
+    for (const path of this.routePaths) {
+      const geo = new T.BufferGeometry();
+      const pos = new Float32Array(16 * 3);
+      geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+      const mat = new T.LineBasicMaterial({ color: 0xff4a38, transparent: true, opacity: 0.9, depthWrite: false });
+      const line = new T.Line(geo, mat);
+      line.frustumCulled = false;
+      this.root.add(line);
+      lines.push({ path, line, pos });
+    }
+    this.routeSweeps = { t0: this.time, lines };
   }
 
   /** The crate mesh in board space (s_common_box_01 when loaded, else a unit chamfer-free box), UVs on D. */
@@ -550,6 +601,32 @@ export class BoardScene {
     for (let i = this.flashes.length - 1; i >= 0; i--) { const f = this.flashes[i]; f.t += dt; if (f.t > 1.2) this.flashes.splice(i, 1); else flash = Math.max(flash, 1 - f.t / 1.2); }
     for (const m of [this.mat.gateEndAdd, this.mat.gateEndAb]) if (m) m.uniforms.uFlash.value.setRGB(flash, flash * 0.12, flash * 0.1);
     for (const k of ['water', 'mire', 'infection', 'smog']) this.mat[k].uniforms.uTime.value = t;
+    // 路线电流（红）：每条路线一道彗尾扫过一次（1.15 s）后消失
+    if (this.routeSweeps) {
+      const SWEEP = 1.15, TAIL = 3.2, SAMPLES = 15;
+      const done = this.time - this.routeSweeps.t0 >= SWEEP;
+      if (!done) {
+        for (const { path, line, pos } of this.routeSweeps.lines) {
+          const prog = (this.time - this.routeSweeps.t0) / SWEEP;
+          line.material.opacity = 0.9 * Math.sin(prog * Math.PI);
+          const head = prog * (path.total + TAIL) - TAIL;
+          for (let i = 0; i < SAMPLES; i++) {
+            const dd = head + (i / (SAMPLES - 1)) * TAIL;
+            if (dd < 0 || dd > path.total) { pos[i * 3 + 1] = -50; continue; }
+            let seg = path.nodes[0];
+            for (const sN of path.nodes) { if (dd >= sN.at) seg = sN; else break; }
+            const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
+            pos[i * 3] = seg.c0 + (seg.c1 - seg.c0) * k;
+            pos[i * 3 + 1] = seg.r0 + (seg.r1 - seg.r0) * k;
+            pos[i * 3 + 2] = 0.12;
+          }
+          line.geometry.attributes.position.needsUpdate = true;
+        }
+      } else {
+        for (const l of this.routeSweeps.lines) { this.root.remove(l.line); l.line.geometry.dispose(); l.line.material.dispose(); }
+        this.routeSweeps = null;
+      }
+    }
     this.renderer.render(this.scene, this.camera);
     this.frames++;
     if (t0) this.lastMs = this.lastMs * 0.9 + ((typeof performance !== 'undefined' ? performance.now() : t0) - t0) * 0.1;

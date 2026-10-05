@@ -22,7 +22,7 @@ final class SilentAudioKeeper {
         }
         let wav = Self.wavContainer(pcm: pcm, sampleRate: sampleRate)
         do {
-            let player = try AVAudioPlayer(data: wav, formatHint: "wav")
+            let player = try AVAudioPlayer(data: wav, fileTypeHint: "wav")
             player.numberOfLoops = -1
             player.volume = 1.0 // silent samples; the session is what matters
             player.prepareToPlay()

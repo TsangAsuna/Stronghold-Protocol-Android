@@ -566,7 +566,7 @@ function seaborn(bb, raw, def) {
           for (const a of battle.alliesInGrid(unit)) {
             if (a === unit || a.hp >= a.s.maxHp - 1e-6) continue;
             if (ownerKeys && ownerKeys.has(a.tileR * COLS + a.tileC)) continue; // the owner's own aura already heals it
-            battle.heal(unit, a, atk * healRatio);
+            battle.heal(unit, a, atk * healRatio, { regen: true }); // the aura's 生命恢复 (GitHub #231)
           }
         }
       }, { owner: unit });

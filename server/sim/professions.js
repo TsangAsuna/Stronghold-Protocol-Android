@@ -383,7 +383,9 @@ const installBard = (battle, unit) => {
     if (!unit.canAct) return;
     const amount = unit.s.atk * (unit.profile.auraRatio ?? 0.1);
     for (const ally of battle.alliesInGrid(unit)) {
-      if (ally.hp < ally.s.maxHp) battle.heal(unit, ally, amount, { aura: true });
+      // the trait's per-second recovery is 生命恢复, not 治疗: it reaches a 绝食 ally ("无法被友方角色治疗") too
+      // (GitHub #231 — the 魔王 / 浊心斯卡蒂 auras heal 武者 / 收割者 / 不屈者)
+      if (ally.hp < ally.s.maxHp) battle.heal(unit, ally, amount, { aura: true, regen: true });
     }
   }, { owner: unit });
 };

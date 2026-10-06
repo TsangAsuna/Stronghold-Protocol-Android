@@ -280,7 +280,8 @@ export function tinmanKit(bb, chess, def) {
               if (wither > 1) b.addBuff(e, { key: witherKey, duration: 1.05, data: { mul: wither }, source: unit });
               b.dealDamage(unit, e, { amount: atk * dmgScale, type: 'arts', isSkill: true, canDodge: false, tags: ['dot', 'zone'] });
             }
-            if (healRatio > 0) for (const a of b.alliesInRadius(x, y, radius, null)) if (a.hp < a.s.maxHp) b.heal(unit, a, atk * healRatio, { tags: ['zone'] });
+            // hp_recovery_per_sec_ratio: a per-second HP recovery (生命恢复, not 治疗) — reaches 绝食 allies too (GitHub #231)
+            if (healRatio > 0) for (const a of b.alliesInRadius(x, y, radius, null)) if (a.hp < a.s.maxHp) b.heal(unit, a, atk * healRatio, { tags: ['zone'], regen: true });
           },
           onEnd() { unit.mem.tinZones = Math.max(0, (unit.mem.tinZones ?? 1) - 1); },
         });

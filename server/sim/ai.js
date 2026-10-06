@@ -462,8 +462,6 @@ export function updateEnemy(b, e, dt) {
   // true: an unblocked ranged enemy in the wind-up of its next attack with a target in range (it stands)
   const winding = !e.hidden && !stunned && enemyAttack(b, e);
   if (!e.alive) return;
-  // a stun / freeze / sleep cuts the attack clip short: no stand left once it ends [ASSUMED]
-  if (stunned && !e.hidden) { e.atkStandUntil = -Infinity; return; }
   if (e.blockedBy) {
     const bl = e.blockedBy;
     // (unblockable/levitate/fear may also arrive through a plain addBuff, which does not unblock by itself; a
@@ -472,7 +470,12 @@ export function updateEnemy(b, e, dt) {
     if (!bl.alive || !bl.deployed || bl.hidden || bl.s.flags.noBlock || bl.s.flags.sleep || ef.unblockable || ef.levitate || ef.fear) b._unblock(e);
     else return;
   }
+  // the block re-check runs for every unblocked enemy, moving or not (Battle._checkBlock) — before the stun exit:
+  // a frozen / stunned enemy never reaches the walk loop below, so an operator redeployed into its radius would
+  // never take the block over (GitHub #232 — a 隐匿 one the freeze had outlasted re-hides and no one could block it)
   if (!e.hidden && b._checkBlock(e)) return;
+  // a stun / freeze / sleep cuts the attack clip short: no stand left once it ends [ASSUMED]
+  if (stunned && !e.hidden) { e.atkStandUntil = -Infinity; return; }
   if (b.time < e.pauseUntil) return;
   // standing for an attack clip (attackStand, GitHub #58): only the walking waits — a checkpoint's WAIT keeps running
   // and DISAPPEAR / APPEAR legs still happen (advanceRoute); drawn idle (the client plays the clip, then Move again);

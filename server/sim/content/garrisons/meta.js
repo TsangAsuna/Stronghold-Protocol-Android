@@ -19,7 +19,8 @@
 //     every other onPrice modifier, so 远见's discount (to 0 at 150 layers since 0.1.3) and strategy caps act on the
 //     lowered price.
 //   * [ASSUMED] 余 SERVER_MOST_BOND: ties between most-member bonds are shuffled; the chess is a copy-weighted pool roll
-//     of any tier (the text gives no tier cap); a bond without an available chess falls through to the next tied one.
+//     capped at the current shop level ("5 本" grants no 6 本 chess, GitHub #218); a bond without an available chess
+//     falls through to the next tied one.
 //   * [ASSUMED] 松果: the "免费特殊招募" is a free pick-one offer of `rewardOffer.count` (3) chess of the pool's tier.
 //   * 拉普兰德 SERVER_GAIN_BOND_LAYER_BY_REFRESH_CNT "若为本回合首次主动刷新": per copy — the manual refreshes this copy
 //     witnesses since its acquisition (or, for a copy held from an earlier round, since the round began — the card's
@@ -303,7 +304,9 @@ H.SERVER_MOST_BOND = {
     }
     const order = best.length > 1 ? ctx.rng.shuffle(best.slice()) : best;
     for (const bond of order) {
-      const id = ctx.rollChess({ bond, maxTier: 6 });
+      // the grant follows the current shop level (5 本 offers no 6 本 chess, GitHub #218) — like the item rolls of
+      // SERVER_GAIN_RANDOM_EQUIP_CHESS_IN_POOL and the special-goods pools of SERVER_SELL_CHESS_GAIN_SPECIAL_GOODS
+      const id = ctx.rollChess({ bond, maxTier: Math.max(1, Math.min(6, ctx.shopLevel())) });
       if (id && ctx.grantChess(id)) return;
     }
   },

@@ -106,7 +106,7 @@
 
 import { GEO, ANIM, UF } from '../../../shared/constants.js';
 import { fxForm } from '../../../shared/protocol.js';
-import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
+import { Camera, fitCamera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
 import { SnapshotBuffer, frameTime } from './interp.js';
 import { TileField } from './tiles.js';
 import { UnitView, ItemView, DeviceView, FORMS } from './units.js';
@@ -124,6 +124,7 @@ import { layoutPen, penSignature } from './pen.js';
 import { IDENTITY, bossPrepField, tilesToDisp, leaderStand } from './prepfield.js';
 import { pickOnTile, pickBattle, hitRectAt, hitTiles } from './pick.js';
 import { promotionsOf } from './promote.js';
+import { selFocusRect, SEL_FOCUS_TILE_PX } from '../ui/gameLogic.js';
 import { skinFor } from '../ui/skins.js';
 
 const VENDOR = { pixi: '/vendor/pixi.min.js', spine: '/vendor/pixi-spine.js' };
@@ -743,6 +744,7 @@ export async function createFieldView(host, options = {}) {
 
   function setCamera(kind, options) {
     if (destroyed) return false;
+    selFocus = null;                       // an explicit camera request supersedes a selection's zoom
     let o = options && typeof options === 'object' ? options : {};
     const prevView = viewKind(camKind, camOpts);
     const prevBand = bandFor(prevView), prevField = fieldRows(prevView);
@@ -824,6 +826,49 @@ export async function createFieldView(host, options = {}) {
         tiles.project(cam, true);
       }
     }
+  }
+
+  /** Ease to `target` over CAMERA_MS (the flight every camera change and the selection focus share). */
+  function flyTo(target) {
+    camFrom = cam.clone();
+    camTo = target;
+    camT0 = performance.now();
+    camMs = CAMERA_MS;
+  }
+
+  // ---- selection focus (official behaviour: a tapped operator's camera) ---------------------------------------
+
+  /**
+   * The camera detour of a selected prep piece (screens/game.js selects): the framing eases to a small rect around the
+   * piece's tile (gameLogic selFocusRect, fitted with the current kind's padding, capped at SEL_FOCUS_TILE_PX) and back
+   * to the camera in use on deselect. Deliberately NOT a setCamera request: camKind / camOpts — the shop camera, the
+   * Final Assault half, the pen's way back — stay untouched, and any explicit camera request ends the detour.
+   */
+  let selFocus = null;          // board { row, col } of the selected piece while the camera is zoomed to it
+
+  function selFocusCamera(row, col) {
+    const R = selFocusRect(row, col, prepXf.toDisp);
+    if (!R) return null;
+    const sz = size();
+    const k = viewKind(camKind, camOpts);
+    return fitCamera(R, { width: sz.width, height: sz.height, padding: defaultPadding(k, sz) },
+      { margin: 0.5, headroom: 1.6, maxTilePx: SEL_FOCUS_TILE_PX });
+  }
+
+  /** Zoom the camera to a board tile (a selected piece) or, with nulls, back to the camera in use. */
+  function focusTile(row, col) {
+    if (destroyed) return false;
+    if (row == null || col == null) {
+      if (!selFocus) return false;
+      selFocus = null;
+      flyTo(targetCamera(camKind, camOpts));
+      return true;
+    }
+    const target = selFocusCamera(row, col);
+    if (!target) return false;
+    selFocus = { row, col };
+    flyTo(target);
+    return true;
   }
 
   // ---- backdrop -------------------------------------------------------------------------------------------
@@ -1704,9 +1749,12 @@ export async function createFieldView(host, options = {}) {
       if (!v) continue;
       if (!v._seen) { v._seen = true; v.fadeIn = 0; }
       if (v._landingHold > performance.now()) continue; // the battle-open deploy clip plays undisturbed
-      if (v.alive || v.info?.kind === 'device') v.sync(s, renderT);
+      // a hand / temp item of a scouted prep board is an ItemView and has no sync (its slot never moves; the board
+      // re-enters on a change): the mandatory call used to throw out of frameBody every frame, so the whole scout
+      // view froze — models never appeared (render/app.js frameBody aborts on the first error)
+      if (v.alive || v.info?.kind === 'device') v.sync?.(s, renderT);
       else if (v.dying > 0) { v.x = s.x; v.y = s.y; }
-      else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }
+      else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync?.(s, renderT); }
     }
     // knocked-out operators waiting to redeploy (b.snap `down`, user playtest #4 item 9): their view stays on the
     // field knocked down under a redeploy ring (UnitView.setDown) — made on the spot for one already down when this
@@ -1907,7 +1955,8 @@ export async function createFieldView(host, options = {}) {
     app.renderer.resize(sz.width, sz.height);
     board3d?.resize(sz.width, sz.height, boardDpr());
     layoutBackdrop();
-    const target = targetCamera(camKind, camOpts);
+    // a selection's zoom survives a resize, re-fitted to the new viewport
+    const target = selFocus ? selFocusCamera(selFocus.row, selFocus.col) : targetCamera(camKind, camOpts);
     if (camTo) camTo = target; else cam = target;
     tiles.project(cam, true);
   }
@@ -2018,6 +2067,12 @@ export async function createFieldView(host, options = {}) {
     stripesUnder() { return !destroyed && !board3d; },
     /** Where the prep pieces are shown: { kind: 'board'|'bossPrep', side: 'L'|'R', mirror } (render/prepfield.js). */
     prepField() { return { kind: prepXf.kind, side: prepXf.side, mirror: prepXf.mirror }; },
+    /**
+     * Selection focus (official behaviour): ease the camera onto the BOARD tile of a selected prep piece, and back to
+     * the camera in use with nulls (focusTile(null) / focusTile(null, null)). A detour: the camera in use (the shop
+     * camera, a 联防 half, the pen's way back) is not touched, and any setCamera request ends the detour.
+     */
+    focusTile,
     holdPiece(uid, tile) {
       if (destroyed || !Number.isInteger(uid)) return false;
       if (!tile || !Number.isInteger(tile.row) || !Number.isInteger(tile.col)) { held.delete(uid); return true; }

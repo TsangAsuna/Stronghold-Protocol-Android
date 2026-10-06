@@ -1721,7 +1721,8 @@ export async function createFieldView(host, options = {}) {
               hide(vv, false);
               vv.fadeIn = 0;
               vv.onDeploy?.();
-              fx.deploy(vv);
+              if (vv.hud) vv.hud.visible = false; // 血条落地后才显示
+              setTimeout(() => { if (vv.hud) vv.hud.visible = true; }, 650);
             }, 300 + i * 220);
           });
           setTimeout(() => {

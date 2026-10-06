@@ -359,14 +359,21 @@ const installFunnel = (battle, unit) => {
   unit.trait.funnelScale = unit.profile.funnel?.init ?? 0.2;
 };
 
+/**
+ * 秘术师 trait: the attack cycle is the charge cycle (issue #181 — the accumulator must not wait for the attack
+ * cooldown on top of it). An attack that comes ready while no target is selectable (none in range, or 深靛's
+ * bound-only range) is converted into one stored energy at once and the next one starts charging immediately
+ * (atkCd = interval again); a held energy is released the moment a target appears (ai.js updateAlly releases it
+ * without waiting for a fresh cooldown).
+ */
 const installMystic = (battle, unit) => {
   unit.trait.stored = 0;
   const max = unit.profile.storeMax ?? 3;
   battle.on('tick', () => {
     if (!unit.canAct) return;
     if (unit.atkCd <= 0 && !unit.trait.hadTarget && unit.trait.stored < max) {
-      unit.trait.storeAcc = (unit.trait.storeAcc ?? 0) + battle.dt;
-      if (unit.trait.storeAcc >= unit.s.interval) { unit.trait.storeAcc = 0; unit.trait.stored++; }
+      unit.trait.stored++;
+      unit.atkCd = unit.s.interval;
     }
   }, { owner: unit });
 };
@@ -376,7 +383,9 @@ const installBard = (battle, unit) => {
     if (!unit.canAct) return;
     const amount = unit.s.atk * (unit.profile.auraRatio ?? 0.1);
     for (const ally of battle.alliesInGrid(unit)) {
-      if (ally.hp < ally.s.maxHp) battle.heal(unit, ally, amount, { aura: true });
+      // the trait's per-second recovery is 生命恢复, not 治疗: it reaches a 绝食 ally ("无法被友方角色治疗") too
+      // (GitHub #231 — the 魔王 / 浊心斯卡蒂 auras heal 武者 / 收割者 / 不屈者)
+      if (ally.hp < ally.s.maxHp) battle.heal(unit, ally, amount, { aura: true, regen: true });
     }
   }, { owner: unit });
 };

@@ -280,7 +280,8 @@ export function tinmanKit(bb, chess, def) {
               if (wither > 1) b.addBuff(e, { key: witherKey, duration: 1.05, data: { mul: wither }, source: unit });
               b.dealDamage(unit, e, { amount: atk * dmgScale, type: 'arts', isSkill: true, canDodge: false, tags: ['dot', 'zone'] });
             }
-            if (healRatio > 0) for (const a of b.alliesInRadius(x, y, radius, null)) if (a.hp < a.s.maxHp) b.heal(unit, a, atk * healRatio, { tags: ['zone'] });
+            // hp_recovery_per_sec_ratio: a per-second HP recovery (生命恢复, not 治疗) — reaches 绝食 allies too (GitHub #231)
+            if (healRatio > 0) for (const a of b.alliesInRadius(x, y, radius, null)) if (a.hp < a.s.maxHp) b.heal(unit, a, atk * healRatio, { tags: ['zone'], regen: true });
           },
           onEnd() { unit.mem.tinZones = Math.max(0, (unit.mem.tinZones ?? 1) - 1); },
         });
@@ -344,7 +345,8 @@ export default {
               && (a.def.bonds || []).includes('lateranoShip') && a.skill && a.skill.kind === 'ammo');
             const pick = battle.rng.pick(pool);
             if (!pick) return;
-            (pick.mem.insiderAmmo ??= new Map()).set(unit.id, { src: unit, seq, n: allyAmmo });
+            if (pick.mem.insiderAmmo == null) pick.mem.insiderAmmo = new Map();
+            pick.mem.insiderAmmo.set(unit.id, { src: unit, seq, n: allyAmmo });
             battle.fx('buff', { x: pick.x, y: pick.y, id: pick.id, kind: 'ammo' });
           }, { owner: unit });
         }, { owner: unit });
@@ -901,6 +903,7 @@ export default {
   // hp_recovery_per_sec_by_max_hp_ratio × max HP per second (the 生命回复速度 attribute: works under her 武者 no-heal).
   chess_char_1_18_a: (bb, chess) => {
     const t = talentBb(chess, 0);
+    const buffKey = 'utage:s2';
     const s1 = skillBbOf(chess, 'skchr_utage_1');
     return {
       skills: {
@@ -912,16 +915,16 @@ export default {
         },
       },
       skill: {
-        kind: 'duration', activateOnDeploy: true, duration: num(bb.duration), spCost: 0, spType: 'none', trigger: 'NEVER',
-        mods: { atkPct: num(bb.atk) },
+        kind: 'passive',
         onStart({ battle, unit }) {
           const loss = unit.hp * num(bb.hp_ratio);
           if (loss > 0 && unit.hp - loss >= 1) battle.loseHp(unit, loss, { source: unit });
+          battle.addBuff(unit, { key: buffKey, duration: num(bb.duration), mods: { atkPct: num(bb.atk) }, tags: ['skill'], visible: true });
           battle.fx('aoe', { x: unit.x, y: unit.y, radius: 1, id: unit.id, skill: 'breach' });
         },
       },
       talents: [{ install(battle, unit) {
-        onHitBy(battle, unit, ({ dmg }) => { if (dmg.isAttack && dmg.type === 'phys' && unit.skill?.id === 'skchr_utage_2' && unit.skill.active) dmg.type = 'arts'; });
+        onHitBy(battle, unit, ({ dmg }) => { if (dmg.isAttack && dmg.type === 'phys' && unit.findBuff(buffKey)) dmg.type = 'arts'; });
         const maxAs = num(t.min_attack_speed), minHp = num(t.min_hp_ratio);
         if (maxAs > 0 && minHp < 1) {
           battle.on('tick', () => {
@@ -964,8 +967,11 @@ export default {
     return {
       skills: {
         skchr_wildmn_1: {
-          kind: 'duration', activateOnDeploy: true, duration: num(r1?.duration), spCost: 0, spType: 'none', trigger: 'NEVER',
-          mods: { aspd: num(r1?.bb?.attack_speed) },
+          kind: 'passive',
+          onStart({ battle, unit }) {
+            const d = num(r1?.duration);
+            if (d > 0) battle.addBuff(unit, { key: 'wildmn:s1', duration: d, mods: { aspd: num(r1?.bb?.attack_speed) }, tags: ['skill'], visible: true });
+          },
         },
       },
       skill: {

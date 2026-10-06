@@ -833,7 +833,7 @@ function MatchScreen() {
       // under the pointer — the receiver is always the piece in focus, so a mis-give is hard to make; the drop
       // then selects the receiver (equip) or the placed item (bare tile) and the drag-zoom hands over to it
       view.on('pieceDragStart', (e) => {
-        ptr.dragZoomUid = e?.piece?.kind === 'item' ? null : undefined;
+        ptr.dragZoomUid = e?.piece?.kind === 'item' ? null : undefined; itemDragRef.current = ptr.dragZoomUid === null;
         // 拖动即放大 (user report): picking an item up eases the camera onto the board's operators at
         // the selection scale, so every possible receiver is big and readable before the pointer even
         // reaches one; the hover-follow then retargets per operator. The board's empty → nothing.
@@ -890,6 +890,9 @@ function MatchScreen() {
         if (vk) audio.voice(vk, 'place');
       }),
       view.on('pieceDragEnd', (e) => {
+        if (ptr.dragZoomUid !== undefined && !e?.dropped) view.focusTile?.(null); // a cancelled item drag restores
+        ptr.dragZoomUid = undefined;
+        itemDragRef.current = false;
         // a cancelled drag (no pieceDrop) must not leave the highlights behind; a release on a tile that takes nothing
         // (the drag controller found no legal target there) says why
         const released = ptr.released;
@@ -1074,6 +1077,7 @@ function MatchScreen() {
   // camera that already frames it. The ref keeps a re-render from flying back and forth: a placeCtx rebuilt by an
   // m.private push re-zooms the same tile instead of restoring first.
   const selFocusRef = useRef(null);                      // { uid, row, col } the camera is zoomed to
+  const itemDragRef = useRef(false);                     // an item drag owns the camera: the selection effect stands down
   useEffect(() => {
     if (!view) return undefined;
     const prev = selFocusRef.current;
@@ -1081,7 +1085,9 @@ function MatchScreen() {
       ? { uid: selEntry.piece.uid, row: selEntry.row, col: selEntry.col } : null;
     if (prev && (!t || prev.uid !== t.uid || prev.row !== t.row || prev.col !== t.col)) {
       selFocusRef.current = null;
-      view.focusTile?.(null);                            // deselect / another piece: the camera in use again
+      // an item drag owns the camera: selecting the dragged bench piece on the way must not yank
+      // the zoom back to the big map mid-drag (the drag's own start/hover/restore drives it)
+      if (!itemDragRef.current) view.focusTile?.(null); // deselect / another piece: the camera in use again
     }
     if (!t) return undefined;
     selFocusRef.current = t;

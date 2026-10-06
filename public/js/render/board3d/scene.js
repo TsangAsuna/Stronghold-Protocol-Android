@@ -47,6 +47,13 @@ export const LIGHTING = Object.freeze({
 /** Additive gain of the gate boxes at the curve's mean (tuned against the official screenshots). */
 export const GATE_GAIN = 0.6;
 
+/** The one-shot route current (buildRoutes / playRouteSweeps): total sweep time (matches the
+ * 2D board's fade-in + hold + fade-out), the comet's tail length in tiles, and how many
+ * vertices the tail is sampled with. The tail window is drawn with setDrawRange — vertices
+ * outside the path must never be joined into the polyline (they would streak in from far
+ * off the board, reading as light shooting in from the screen edge). */
+const SWEEP = 1.95, TAIL = 1.5, SAMPLES = 24;
+
 /** Gate pulse: the official clip's _TintColor.a curve (2 s loop, 0.134 → 0.229 → 0.134) scaled to our intensity. */
 export function gatePulse(t, phase = 0) {
   const k = 0.5 - 0.5 * Math.cos(((t / 2 + phase) % 1) * Math.PI * 2);
@@ -273,7 +280,7 @@ export class BoardScene {
     }
   }
 
-  /** 每条路线一道红色电流扫过一次（战斗开场调用一次；1.15 s 后完全消失）。 */
+  /** 每条路线一道红色电流扫过一次（战斗开场调用一次；约 2 s 后完全消失）。 */
   playRouteSweeps() {
     if (!this.routePaths?.length || this.routeSweeps) return;
     const T = this.THREE;
@@ -289,6 +296,7 @@ export class BoardScene {
       const mat = new T.LineBasicMaterial({ color: 0xff3a30, transparent: true, opacity: 0.6, depthWrite: false });
       const line = new T.Line(geo, mat);
       line.frustumCulled = false;
+      line.visible = false; // the first update sets the draw window; never draw the raw zeroed vertices
       this.root.add(line);
       lines.push({ path, line, pos });
     }
@@ -605,7 +613,7 @@ export class BoardScene {
     for (let i = this.flashes.length - 1; i >= 0; i--) { const f = this.flashes[i]; f.t += dt; if (f.t > 1.2) this.flashes.splice(i, 1); else flash = Math.max(flash, 1 - f.t / 1.2); }
     for (const m of [this.mat.gateEndAdd, this.mat.gateEndAb]) if (m) m.uniforms.uFlash.value.setRGB(flash, flash * 0.12, flash * 0.1);
     for (const k of ['water', 'mire', 'infection', 'smog']) this.mat[k].uniforms.uTime.value = t;
-    // 路线电流（红）：每条路线一道彗尾扫过一次（1.15 s）后消失
+    // 路线电流（红）：每条路线一道彗尾扫过一次后消失；只画落在路径窗口内的采样点
     if (this.routeSweeps) {
       const done = this.time - this.routeSweeps.t0 >= SWEEP;
       if (!done) {
@@ -613,16 +621,21 @@ export class BoardScene {
           const prog = (this.time - this.routeSweeps.t0) / SWEEP;
           line.material.opacity = 0.9 * Math.sin(prog * Math.PI);
           const head = prog * (path.total + TAIL) - TAIL;
+          let i0 = -1, i1 = -1;
           for (let i = 0; i < SAMPLES; i++) {
             const dd = head + (i / (SAMPLES - 1)) * TAIL;
-            if (dd < 0 || dd > path.total) { pos[i * 3 + 1] = -50; continue; }
+            if (dd < 0 || dd > path.total) continue;
             let seg = path.nodes[0];
             for (const sN of path.nodes) { if (dd >= sN.at) seg = sN; else break; }
             const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
             pos[i * 3] = seg.c0 + (seg.c1 - seg.c0) * k;
             pos[i * 3 + 1] = seg.r0 + (seg.r1 - seg.r0) * k;
             pos[i * 3 + 2] = 0.12;
+            if (i0 < 0) i0 = i;
+            i1 = i;
           }
+          if (i0 < 0) line.visible = false;
+          else { line.visible = true; line.geometry.setDrawRange(i0, i1 - i0 + 1); }
           line.geometry.attributes.position.needsUpdate = true;
         }
       } else {

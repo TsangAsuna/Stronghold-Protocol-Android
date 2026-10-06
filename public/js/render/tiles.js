@@ -721,17 +721,13 @@ export class TileField {
     const g = this.routeGfx;
     g.clear();
     if (this.routeSweepT0 == null || !this.routePaths?.length || !this.cam) return;
-    const cam = this.cam, p = this._p, q = { x: 0, y: 0, s: 0, depth: 0 };
+    const cam = this.cam, q = { x: 0, y: 0, s: 0, depth: 0 };
     const T = this.time - this.routeSweepT0;
     const FADE_IN = 0.25, HOLD = 1.3, FADE_OUT = 0.4, LIFE = FADE_IN + HOLD + FADE_OUT;
     if (T > LIFE) { this.routeSweepT0 = null; g.clear(); return; }
     const alpha = T < FADE_IN ? T / FADE_IN : T > FADE_IN + HOLD ? 1 - (T - FADE_IN - HOLD) / FADE_OUT : 1;
-    const RED = COLORS.gateRed, w = Math.max(1.5, this._p.s / 64 * 2.2);
-    const DASH = 0.8, GAP = 0.9, FLOW = 2.6; // 蠕动速度（格/秒）
+    const w = Math.max(1.5, this._p.s / 64 * 2.2);
     for (const path of this.routePaths) {
-      const corners = [];
-      for (const n of path.nodes) if (!corners.length || corners[corners.length - 1].r !== n.r0 || corners[corners.length - 1].c !== n.c0) corners.push([n.r0, n.c0]);
-      corners.push([path.nodes[path.nodes.length - 1].r1, path.nodes[path.nodes.length - 1].c1]);
       // 单段亮线（1.5 格）从红门跑向蓝门：一次过，不画完整轨迹
       const prog = Math.min(1, T / (FADE_IN + 0.9));
       const alpha2 = alpha * Math.sin(prog * Math.PI);
@@ -745,7 +741,7 @@ export class TileField {
         for (const sN of path.nodes) { if (dd >= sN.at) seg = sN; else break; }
         const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
         const r = seg.r0 + (seg.r1 - seg.r0) * k, c = seg.c0 + (seg.c1 - seg.c0) * k;
-        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.09, i === 0 ? p : q);
+        cam.project(c, r, this.heightAt(Math.round(r), Math.round(c)) + 0.09, q);
         if (prev) {
           g.lineStyle((0.12 + 0.4 * (i / STEPS)) * w + 4, 0xd41f0f, alpha2 * (0.3 + 0.7 * (i / STEPS)));
           g.moveTo(prev.x, prev.y);

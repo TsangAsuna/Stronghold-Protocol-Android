@@ -207,6 +207,26 @@ test('Final Assault: a fighting player may only watch its own boss field; elimin
   m.dispose();
 });
 
+test('the planned seat pairing is public through the boss prep (GitHub #190); the battle carries it in fields[]', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 4, seed: 57, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : {}) }).start();
+  const m = h.m;
+  h.drive(() => m.phase === PHASE.PREP && m.round === 13);
+  assert.equal(m.publicView().bossPairing, undefined, 'a normal round pairs nobody');
+  h.drive(() => m.phase === PHASE.PREP && m.round === 14);
+  const pub = m.publicView();
+  assert.deepEqual(pub.bossPairing, [['p_0', 'p_1'], ['p_2', 'p_3']], 'the seat pairs of _planBossWaves');
+  assert.deepEqual(pub.bossPairing, m.bossWaves.map((g) => g.players.slice()));
+  // a mid-prep quit re-pairs (_quit → _planBossWaves), the public view follows at once
+  m.onLeave('p_0');
+  assert.deepEqual(m.publicView().bossPairing, [['p_1', 'p_2'], ['p_3']]);
+  // the battle's own pairing comes from fields[] — the prep-only field is gone
+  h.drive(() => m.phase === PHASE.FINAL_ASSAULT);
+  assert.equal(m.publicView().bossPairing, undefined);
+  assert.deepEqual(m.publicView().fields.map((f) => [f.fieldId, f.players]), [['b1', ['p_1', 'p_2']], ['b2', ['p_3']]]);
+  checkInvariants(m);
+  m.dispose();
+});
+
 test('Final Assault: stats reach m.private at the end; leader "扣除目标生命" effects (lpLoss) hit the team LP', () => {
   const h = makeMatch({
     mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 56, fake: true,

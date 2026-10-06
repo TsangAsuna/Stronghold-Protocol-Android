@@ -932,6 +932,11 @@ export class Match {
     // 最终攻势 / 隐秘核心: when the overtime drain starts (ms epoch; `deadline` is the level's 120 s countdown)
     if ((this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE) && this.overtimeAt) v.overtimeAt = this.overtimeAt;
     if (this.bossPool) v.bossHp = { hp: Math.max(0, Math.round(this.bossPool.hp)), max: Math.round(this.bossPool.maxHp) };
+    // 最终攻势 / 隐秘核心, before the battle opens: the planned seat pairing (fields[].players above only exists once
+    // it does — GitHub #190: the 休整期 had no way to tell who shares whose field). `groups` of finalAssault.js
+    // pairPlayers, re-planned by _quit while the prep runs, so always the current plan; once the fields exist they
+    // carry the pairing themselves (a stale plan is rebuilt there at battle open, never published from here).
+    if (this.bossWaves && !this.fields.length) v.bossPairing = this.bossWaves.map((g) => g.players.slice());
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline

@@ -10,8 +10,9 @@
 //     there each time the owner's skill gives one — also as soon as its owner is back with one in stock;
 //     not placed ⇒ it never appears (the hidden 待部署区 deploys nothing by itself);
 //   * a talent's summon the owner holds from the start (凯瑟琳 "携带3个支援装置（最多部署2个）") deploys with the board;
-//   * not placed: a skill's summon, a device or 海嗣 never appears; the tacticians' 狼群 / 流形 still come as their 援军 on
-//     a tactical point (docs/PLAYING.md §4 and docs/SIM.md say exactly this).
+//   * not placed: a skill's summon, a device, 海嗣 — and 伺夜's 狼群 (GitHub #202: the pack deploys only through the
+//     player's deployment, nothing auto-deploys at the battle start or on a later 联防 phase) — never appears;
+//     缪尔赛思's 流形 still comes as her 援军 on a tactical point.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle, chessRec, checkInvariants } from '../helpers/battleHarness.js';
@@ -23,6 +24,7 @@ const guard = (o = {}) => chessRec({ id: 'test_guard', profession: 'WARRIOR', sk
 const SILENCE = 'chess_char_2_02_a';
 const CATHY = 'chess_char_4_11_a';
 const SHAMARE = 'chess_char_3_15_a';
+const VIGIL = 'chess_char_3_19_a';
 
 test('#2 赫默: the placed 医疗探机 deploys once at the start (10 s); each S2 brings it back onto its own tile', REAL, () => {
   const h = makeBattle({
@@ -132,7 +134,7 @@ test('#1 凯瑟琳 with no device placed: no device in battle', REAL, () => {
   checkInvariants(h.b);
 });
 
-test('not placed: 赫默 / 巫恋 / 凯瑟琳 / 浊心斯卡蒂 summon nothing; 伺夜 / 缪尔赛思 still bring their 援军 on a tactical point', REAL, () => {
+test('not placed: 赫默 / 巫恋 / 凯瑟琳 / 浊心斯卡蒂 / 伺夜 summon nothing; 缪尔赛思 still brings her 援军 on a tactical point', REAL, () => {
   const run = (chessId, cast = false) => {
     const h = makeBattle({ units: [{ chessId, row: 10, col: 3, uid: 1 }], autoFinish: false, timeLimit: 20 });
     h.run(2);
@@ -149,10 +151,64 @@ test('not placed: 赫默 / 巫恋 / 凯瑟琳 / 浊心斯卡蒂 summon nothing; 
   };
   for (const id of [SILENCE, SHAMARE]) assert.equal(run(id, true).length, 0, id);
   for (const id of [CATHY, 'chess_char_6_04_a']) assert.equal(run(id).length, 0, id);
-  const wolf = run('chess_char_3_19_a');
-  assert.deepEqual(wolf.map((u) => u.defId), [TOKEN_IDS.wolfPack], '伺夜: her 狼群 as 援军');
+  assert.equal(run(VIGIL).length, 0, '伺夜: no pack without a placed 狼群 piece (GitHub #202)');
   const mf = run('chess_char_6_11_a');
   assert.deepEqual(mf.map((u) => u.defId), [TOKEN_IDS.manifold], '缪尔赛思: her 流形 as 援军');
+});
+
+test('#202 伺夜: the placed 狼群 deploys on the tile the player chose and is his 援军 — never a second pack', REAL, () => {
+  const h = makeBattle({
+    units: [{ chessId: VIGIL, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: TOKEN_IDS.wolfPack, ownerUid: 1, row: 10, col: 5, uid: 2 }],
+    autoFinish: false, timeLimit: 30,
+  });
+  h.step();
+  const piece = h.unit(2);
+  assert.equal(piece.alive, true, 'the placed pack deploys with the board');
+  assert.deepEqual([piece.tileR, piece.tileC], [10, 5], 'on the tile the player chose');
+  assert.equal(h.unit(VIGIL).trait.reinforcement, piece, 'it is 伺夜’s 援军');
+  assert.equal(h.b.allyUnits.filter((u) => u.defId === TOKEN_IDS.wolfPack).length, 1, 'no second pack on a tactical point');
+  checkInvariants(h.b);
+});
+
+test('#202 伺夜: no pack at all when the player never placed one — also not after the tactician leaves and comes back', REAL, () => {
+  const h = makeBattle({ units: [{ chessId: VIGIL, row: 10, col: 3, uid: 1 }], autoFinish: false, timeLimit: 40 });
+  h.run(6);
+  assert.equal(h.b.allyUnits.filter((u) => u.defId === TOKEN_IDS.wolfPack).length, 0, 'nothing auto-deploys at the battle start');
+  h.b.dealDamage(null, h.unit(VIGIL), { amount: 1e9, type: 'true' });
+  h.step();
+  h.run(1);
+  assert.ok(h.b.redeploy(h.unit(VIGIL), { free: true }), '伺夜 back on his tile');
+  h.run(2);
+  assert.equal(h.b.allyUnits.filter((u) => u.defId === TOKEN_IDS.wolfPack).length, 0, 'still no pack (no per-phase tactical point)');
+  checkInvariants(h.b);
+});
+
+test('#202 伺夜: the pack re-summons on the placed tile after it left for good with its tactician (no position drift)', REAL, () => {
+  const h = makeBattle({
+    units: [{ chessId: VIGIL, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: TOKEN_IDS.wolfPack, ownerUid: 1, row: 10, col: 5, uid: 2 }],
+    autoFinish: false, timeLimit: 60,
+  });
+  h.step();
+  const vigil = h.unit(VIGIL), piece = h.unit(2);
+  h.b.dealDamage(null, vigil, { amount: 1e9, type: 'true' });
+  h.step();
+  assert.equal(piece.alive, false, 'the pack leaves with its tactician');
+  assert.ok(h.b.redeploy(vigil, { free: true }), '伺夜 redeploys');
+  h.step();
+  const packs = h.b.allyUnits.filter((u) => u.defId === TOKEN_IDS.wolfPack && u.alive);
+  assert.equal(packs.length, 1, 'one pack again');
+  assert.deepEqual([packs[0].tileR, packs[0].tileC], [10, 5], 'on the placed tile — the tactical point the player chose');
+  checkInvariants(h.b);
+  // the next 联防 phase: a fresh battle from the same board deploys the placed pack on the very same tile
+  const g = makeBattle({
+    units: [{ chessId: VIGIL, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: TOKEN_IDS.wolfPack, ownerUid: 1, row: 10, col: 5, uid: 2 }],
+    autoFinish: false, timeLimit: 30,
+  });
+  g.step();
+  const next = g.unit(2);
+  assert.equal(next.alive, true);
+  assert.deepEqual([next.tileR, next.tileC], [10, 5], 'no drift between phases');
+  checkInvariants(g.b);
 });
 
 test('巫恋 leaves ⇒ her doll leaves (PRTS 诅咒娃娃 备注); 赫默 leaves ⇒ her drone stays (PRTS 医疗探机 备注)', REAL, () => {

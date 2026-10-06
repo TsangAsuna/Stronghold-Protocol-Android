@@ -510,11 +510,12 @@ export class UnitView {
       // down with facing UP, §22.1, is built a frame later; a model rebuilt while it is down)
       const f = this._formSpec() || (this.alive ? null : this._dieForm);
       if (f) this.actor.setForm(f.roles);
-      // replay current state (a dead model resumes its Die clip where it would be — a knocked-down one holds its end)
+      // replay current state (a dead model resumes its Die clip where it would be — a knocked-down one holds its
+      // end). dieAt applies the clip at the restored time with no mix, so the fresh skeleton never shows its setup
+      // pose — on the eye slots that was open eyeballs with no eyelids (GitHub issue #177) — nor the constructor
+      // idle's attachment state bleeds through a mix
       if (!this.alive) {
-        const d = this.actor.die();
-        const at = Math.min(d, this.dieT * (this.ctx.animRate?.() || 1));
-        if (at > 0) this.actor.update(at);
+        this.actor.dieAt(this.dieT * (this.ctx.animRate?.() || 1));
       } else {
         if (this.flags & UF.SKILL) this.actor.setSkill(true);
         this.actor.setBase(this._baseFromAnim());

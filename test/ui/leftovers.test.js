@@ -6,13 +6,16 @@
 //      from m.public.overtimeAt (ui/matchStatus.js overtimeState);
 //   3. a welcome with a new playerId while a room / match was on screen → 「服务器会话已重置…」 (store.js
 //      sessionResetNotice), stale dialogs dismissed (components.js closeAllDialogs);
-//   4. the solo pause control (pauseAvailable / pauseIntent / frozen clocks).
+//   4. the solo pause control (pauseAvailable / pauseIntent / frozen clocks);
+//   5. who shares the viewer's battlefield (GitHub #190): the team panel's gold-framed rows (teamPanel.js fieldmates)
+//      from the boss round's planned pairing (m.public bossPairing) to the battle's fields[] and the 联防 pub.unite.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DATA, makeMatch, give, giveItem, legalTileFor } from '../match/harness.js';
 import { placementContext, dropIntent, equipMerges, phaseTotalSeconds, countdownState } from '../../public/js/ui/gameLogic.js';
 import { underframeActions, itemDestroyable } from '../../public/js/ui/facing.js';
+import { fieldmates } from '../../public/js/ui/teamPanel.js';
 import { replaceRequest, replaceIntent } from '../../public/js/ui/equipReplace.js';
 import {
   overtimeState, bossLevelSeconds, overtimeDrainPerSec, pauseAvailable, pauseIntent, isPaused, frozenNow, remainAt, OVERTIME_WARN_BEFORE,
@@ -216,5 +219,48 @@ describe('4. solo pause', () => {
     assert.equal(frozenNow(pub(PHASE.COMBAT), 30_000, 20_000), 30_000, 'not paused: live');
     assert.equal(remainAt(p.deadline, frozenNow(p, 45_000, 20_000)), 30);
     assert.equal(remainAt(0, 1), null);
+  });
+});
+
+describe('5. same battlefield (GitHub #190): fieldmates(pub, myId)', () => {
+  const pub = (extra = {}) => ({ phase: PHASE.PREP, players: [], fields: [], ...extra });
+  const ids = (set) => (set ? [...set].sort() : null);
+
+  test('prep: the boss round\'s planned pairing (m.public bossPairing), nothing in a normal round', () => {
+    const p = pub({ bossPairing: [['p_0', 'p_1'], ['p_2', 'p_3']] });
+    assert.deepEqual(ids(fieldmates(p, 'p_0')), ['p_1']);
+    assert.deepEqual(ids(fieldmates(p, 'p_3')), ['p_2']);
+    assert.equal(fieldmates(p, 'spec'), null, 'not paired');
+    assert.equal(fieldmates(pub({ bossPairing: [['p_0']] }), 'p_0'), null, 'the odd seat is alone');
+    assert.equal(fieldmates(pub(), 'p_0'), null, 'no pairing published');
+  });
+
+  test('battle: the boss field listing the viewer (fields[].players); a normal round\'s own field is a singleton', () => {
+    const boss = pub({
+      phase: PHASE.FINAL_ASSAULT,
+      fields: [
+        { fieldId: 'b1', kind: 'boss', players: ['p_0', 'p_1'], live: true },
+        { fieldId: 'b2', kind: 'boss', players: ['p_2'], live: true },
+      ],
+    });
+    assert.deepEqual(ids(fieldmates(boss, 'p_0')), ['p_1']);
+    assert.equal(fieldmates(boss, 'p_2'), null, 'the odd seat fights alone');
+    assert.equal(fieldmates(boss, 'spec'), null, 'an eliminated spectator has no field');
+    const normal = pub({
+      phase: PHASE.COMBAT,
+      fields: [
+        { fieldId: 'n:p_0', kind: 'normal', players: ['p_0'], live: true },
+        { fieldId: 'n:p_1', kind: 'normal', players: ['p_1'], live: true },
+      ],
+    });
+    assert.equal(fieldmates(normal, 'p_0'), null);
+  });
+
+  test('联防: helpers and leakers share the one field; a spectator of neither is left out', () => {
+    const unite = pub({ phase: PHASE.UNITE, unite: { helpers: ['p_0', 'p_1'], leakers: ['p_2'] } });
+    assert.deepEqual(ids(fieldmates(unite, 'p_0')), ['p_1', 'p_2']);
+    assert.deepEqual(ids(fieldmates(unite, 'p_2')), ['p_0', 'p_1'], 'the leaker sees the defenders');
+    assert.equal(fieldmates(unite, 'spec'), null);
+    assert.equal(fieldmates(pub({ phase: PHASE.UNITE }), 'p_0'), null, 'no unite plan published');
   });
 });

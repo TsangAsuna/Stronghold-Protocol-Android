@@ -650,15 +650,16 @@ test('3_19 伺夜: wolf pack (2 → 3 wolves, block/bites, lose a wolf instead o
   const id = 'chess_char_3_19_a', bb = BB(id), t1 = TB(id, 1), tb = TR(id);
   const h = makeBattle({
     // kit numbers in isolation: 伺夜's 特质 (garrison_152/153/01 弱点伤害) would turn these phys hits into arts (RES 0)
-    // the pack takes the tactical point (Battle.findTacticalPoint): the flat stage’s enemy path tile (9,3) in range
+    // the pack is the 狼群 piece the player placed (GitHub #202: without it no pack comes) — on the enemy path, in range
     defs: { enemies: { enemy_d: dummy('enemy_d', { def: 300 }) }, chess: noGarrison(id) }, timeLimit: 120, hooks: ['damaged', 'attack'], captureNoisy: true, flags: { dpPerSec: 0 },
-    units: [{ chessId: id, row: 10, col: 3 }], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }],
+    units: [{ chessId: id, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }],
+    enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }],
   });
   const u = h.unit(id);
   h.step();
   const w = u.trait.reinforcement;
-  assert.ok(w && w.alive && w.defId === 'token_10028_vigil_wolf', 'pack summoned on the tactical point');
-  assert.equal(w.mem.wolves, 2);
+  assert.ok(w && w.alive && w.defId === 'token_10028_vigil_wolf', 'the placed piece is the pack');
+  assert.equal(w.mem.shadows, 2);
   assert.equal(w.s.blockCnt, 2);
   h.run(3);
   const e = h.enemy('enemy_d');
@@ -686,18 +687,19 @@ test('3_19 伺夜: wolf pack (2 → 3 wolves, block/bites, lose a wolf instead o
   approx(packBonus[0].amount, u.s.atk * bb['attack@vigil_s_3.atk_scale'], 1e-6, 'sized on 伺夜 ATK');
   h.runUntil(() => !u.skill.active, 20);
   approx(p.dp, dp0 + bb.value, 1e-6, 'DP over the skill');
-  h.runUntil(() => w.mem.wolves === 3, 30);
+  h.runUntil(() => w.mem.shadows === 3, 30);
   assert.equal(w.s.blockCnt, 3);
   h.b.dealDamage(null, w, { type: 'true', amount: 1e7 });
   assert.equal(w.alive, true);
-  assert.equal(w.mem.wolves, 2);
+  assert.equal(w.mem.shadows, 2);
   approx(w.hp, w.s.maxHp);
   done(h);
 
   const gid = 'chess_char_3_19_b';
   const g = makeBattle({
     defs: { enemies: { enemy_h: dummy('enemy_h', { atk: 400, bat: 1 }) } }, timeLimit: 60, hooks: ['damaged'], captureNoisy: true, flags: { dpPerSec: 0 },
-    units: [{ chessId: gid, row: 10, col: 3 }], enemies: [{ key: 'enemy_h', pos: [9, 3], time: 0.5 }],
+    units: [{ chessId: gid, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }],
+    enemies: [{ key: 'enemy_h', pos: [9, 3], time: 0.5 }],
   });
   const v = g.unit(gid);
   g.run(3);
@@ -715,7 +717,7 @@ test('3_19 伺夜: wolf pack (2 → 3 wolves, block/bites, lose a wolf instead o
   g.b.dealDamage(null, gw, { type: 'true', amount: 1e7 });
   assert.equal(gw.alive, false);
   g.run(gw.base.respawnTime + 0.5);
-  assert.ok(v.trait.reinforcement !== gw && v.trait.reinforcement?.alive, 'pack re-summoned after its respawn time');
+  assert.ok(gw.alive, 'the placed pack re-deploys after its respawn time (its tile)');
   done(g);
 });
 
@@ -741,7 +743,8 @@ test('3_17 流星 / 3_19 伺夜 with their 特质 弱点伤害: kit damage is re
   assert.ok(ds.rawChess(vid).garrisonIds.includes('garrison_01_a'), 'real data: 伺夜 carries 弱点伤害');
   const g = makeBattle({
     defs: { enemies: { enemy_d: dummy('enemy_d', { def: 300, res: 40 }) } }, timeLimit: 60, hooks: ['damaged'], captureNoisy: true, flags: { dpPerSec: 0 },
-    units: [{ chessId: vid, row: 10, col: 3 }], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }],
+    units: [{ chessId: vid, row: 10, col: 3, uid: 1 }, { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }],
+    enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }],
   });
   const v = g.unit(vid);
   g.run(3);
@@ -983,11 +986,13 @@ test('3_15 巫恋: the doll placed in the prep phase deploys at the start, then 
 
 test('3_19 伺夜: the pack never takes a later board unit’s tile; a 狼群 piece placed in prep IS the pack (single effects)', () => {
   const id = 'chess_char_3_19_a', bb = BB(id), t1 = TB(id, 1);
+  // the tactical point (used when the pack comes back, GitHub #202) never takes a board unit's tile
   const a = makeBattle({ units: [{ chessId: id, row: 12, col: 3 }, { chessId: 'chess_char_3_16_a', row: 12, col: 4 }], timeLimit: 20 });
   a.step();
-  const cu = a.unit('chess_char_3_16_a'), w0 = a.unit(id).trait.reinforcement;
+  const cu = a.unit('chess_char_3_16_a');
   assert.ok(cu.deployed && cu.tileR === 12 && cu.tileC === 4, '蛇屠箱 deployed on its own tile');
-  assert.ok(w0 && w0.alive && !(w0.tileR === 12 && w0.tileC === 4));
+  const tp = a.b.findTacticalPoint(a.unit(id));
+  assert.ok(!tp || !(tp[0] === 12 && tp[1] === 4), 'the tactical point never takes a later board unit’s tile');
   done(a);
 
   // the piece sits lower on the board than 伺夜 (deploys after him): it is deployed early, no second pack

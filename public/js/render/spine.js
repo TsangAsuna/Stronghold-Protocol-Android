@@ -432,6 +432,25 @@ export class SpineActor {
     return 0;
   }
 
+  /**
+   * The death clip resumed `at` clip-seconds in — for a model built or rebuilt while its unit is already dead
+   * (render/units.js _acquireSpine, GitHub issue #177). die() alone would start the fall over from 0 and leave the
+   * fresh skeleton on its setup pose until the first apply — on the eye slots that is open eyeballs and no eyelids,
+   * whatever the eye structure (the same-slot O_Eye ⇄ C_Eye swap and the separate Eyeclose overlays alike: their
+   * attachments exist only inside the clips) — mixing the constructor's idle stand-in in on top. Here the clip is
+   * advanced to `at` before it is first applied (once, no mix: a rebuilt skeleton has no pose worth blending
+   * through), so its attachment timelines dress the slots exactly as at that moment of the fall, and a resume past
+   * the end holds the last pose. Returns the die clip's duration (0 when there is none), like die().
+   */
+  dieAt(at) {
+    const d = this.die();
+    const e = this.spine?.state?.tracks?.[0];
+    if (d > 0 && e) e.mixDuration = 0;
+    if (!Number.isFinite(at) || at < 0) at = 0;
+    this.update(d > 0 ? Math.min(at, d) : 0);   // apply at the restored time — never the bare setup pose
+    return d;
+  }
+
   /** Revive (redeploy after death). */
   revive() {
     this.dead = false;

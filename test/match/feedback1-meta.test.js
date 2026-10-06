@@ -94,7 +94,7 @@ test('#1 players\' scenario: 普罗旺斯 + 德克萨斯 deployed, refresh, buy 
   m.dispose();
 });
 
-test('#1 each copy counts its own refreshes: a bench copy (整备区时也有效) bought later fires on its own first refresh; an elite keeps "already fired"', () => {
+test('#1 each copy counts its own refreshes: a bench copy (整备区时也有效) bought later fires on its own first refresh; the merged elite is a new piece and fires too (GitHub #169)', () => {
   const s = setup();
   const { m, ps } = s;
   s.activate();
@@ -107,18 +107,17 @@ test('#1 each copy counts its own refreshes: a bench copy (整备区时也有效
   assert.equal(s.L(), 8, 'copy B: its first refresh (A already fired this round)');
   s.refresh();
   assert.equal(s.L(), 8, 'nothing more this round');
-  // the third copy completes the elite: A and B already fired this round, so the elite does not fire again this round
-  // [ASSUMED: conservative — the elite keeps the highest refresh count of its copies]
+  // the third copy completes the elite: a merged elite is a NEW piece (fresh uid, GitHub #169) — its counter starts at 0
   const elite = s.buy(LAP);
   assert.equal(elite.id, LAP_B, 'merged into the elite');
   assert.ok(!ps.find(a.uid) && !ps.find(b.uid), 'copies consumed');
   s.refresh();
-  assert.equal(s.L(), 8, 'the elite made this round from copies that already fired: no second trigger');
+  assert.equal(s.L(), 8 + 8, 'the elite is a new piece: its first refresh this round fires +8');
   s.h.toPrep(2);
   ps.funds = 50;
   s.activate();
   s.refresh();
-  assert.equal(s.L(), 8 + 8, 'R2: the elite fires +8 on the round\'s first refresh');
+  assert.equal(s.L(), 16 + 8, 'R2: the elite fires +8 on the round\'s first refresh');
   checkInvariants(m);
   m.dispose();
 });

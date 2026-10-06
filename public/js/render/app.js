@@ -489,6 +489,17 @@ export async function createFieldView(host, options = {}) {
     for (const fn of [...set]) { try { fn(payload); } catch (err) { console.error(`[render] ${name} listener failed`, err); } }
   };
 
+  /**
+   * Announce that a unit reached the board. The deploy voice line hangs off this event rather than off
+   * the manual drop handler, so it follows every route in: manual placement, combat auto-deploy, a
+   * merge's elite and a raid redeploy.
+   */
+  const announceDeploy = (v, e) => {
+    const info = v?.info;
+    if (!info || info.side === 'enemy') return;
+    emit('unitDeploy', { uid: e?.uid ?? null, defId: info.defId ?? null, chessId: e?.piece?.id ?? info.id ?? null });
+  };
+
   let destroyed = false;
   let mode = 'idle';          // 'idle' | 'prep' | 'battle'
   let stageRec = null;
@@ -974,11 +985,11 @@ export async function createFieldView(host, options = {}) {
         views.set(key, v);
         if (promoFrom.has(e.uid)) {
           // a merge's elite: on the tile of the deployed copy it replaced, or on its bench slot
-          if (e.area === 'board') v.onDeploy?.();
+          if (e.area === 'board') { v.onDeploy?.(); announceDeploy(v, e); }
           fx.promote(v, promoFrom.get(e.uid).filter((f) => Math.abs(f.x - w.x) + Math.abs(f.y - w.y) > 1e-3));
           promotions.push({ uid: e.uid, id: e.piece.id, area: e.area, row: e.row ?? null, col: e.col ?? null, idx: e.idx ?? null, copies: promoFrom.get(e.uid).length });
           if (promotions.length > 20) promotions.shift();
-        } else if (e.area === 'board' && prevBoard.size && !prevBoard.has(e.uid)) { v.onDeploy?.(); fx.deploy(v); }
+        } else if (e.area === 'board' && prevBoard.size && !prevBoard.has(e.uid)) { v.onDeploy?.(); announceDeploy(v, e); fx.deploy(v); }
         else if (before.length && (e.area === 'hand' || e.area === 'temp') && !before.some((g) => g.uid === e.uid)) fx.deploy(v);
       } else {
         const prevHome = v._home;
@@ -991,7 +1002,7 @@ export async function createFieldView(host, options = {}) {
           pending.delete(key);
           if (moved || Math.abs(v.x - w.x) + Math.abs(v.y - w.y) > 1e-3) v._tween = { fx: v.x, fy: v.y, fz: v.z, tx: w.x, ty: w.y, tz: w.z, t: 0 };
           v.lift = 0;
-          if (e.area === 'board' && !prevBoard.has(e.uid) && v.onDeploy) { v.onDeploy(); fx.deploy(v); }
+          if (e.area === 'board' && !prevBoard.has(e.uid) && v.onDeploy) { v.onDeploy(); announceDeploy(v, e); fx.deploy(v); }
         }
       }
       v._home = w;
@@ -1426,9 +1437,9 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
-    // official re-deploy moment: after 准备就绪 the operators land one by one (visual deploy
-    // clip per unit — the SFX already plays via announceDeploy elsewhere). The route current
-    // (meta.routes, this round's real batch routes) sweeps once at the same moment.
+    // official re-deploy moment: after 准备就绪 the operators land one by one (deploy clip +
+    // unitDeploy announce per unit: the deploy SFX and voice line follow each landing). The
+    // route current (meta.routes, this round's real batch routes) sweeps once at the same moment.
     landingPlan = null;
     landingFired = false;
     // the own units come from the FIRST battle frame's views, not meta.units: the server sends
@@ -1562,6 +1573,7 @@ export async function createFieldView(host, options = {}) {
         // redeploys (after the presentation) keep the drop-in pillar.
         if (v && renderT0Battle != null && now - renderT0Battle > 5) {
           v.onDeploy?.();
+          announceDeploy(v, e);
           if (v.info?.kind !== 'device') fx.deploy(v);
         }
         break;
@@ -1728,6 +1740,7 @@ export async function createFieldView(host, options = {}) {
               hide(vv, false);
               vv.fadeIn = 0;
               vv.onDeploy?.();
+              announceDeploy(vv);
               setTimeout(() => { if (vv.hud) vv.hud.visible = true; }, 650);
             }, 300 + i * 220);
           });

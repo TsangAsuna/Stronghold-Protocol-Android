@@ -13,6 +13,7 @@ import { LoadoutButton } from './loadout.js';
 import { actions } from '../ui/gameActions.js';
 import { factionTypes, sortedPlayers, phaseTotalSeconds } from '../ui/gameLogic.js';
 import { enemyIconUrl, factionIconUrl } from '../ui/assetUrls.js';
+import { t } from '../i18n.js';
 import { useStore } from '../store.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -93,7 +94,7 @@ export function BriefingScreen() {
         <span class="brief-ready__pips">${players.map((p) => html`<i key=${p.playerId} class=${cx(p.ready && 'on', p.playerId === myId && 'me')} title=${p.name}><${Icon} name="user" /></i>`)}</span>
       </div>
       <${Button} variant="primary" size="xl" icon=${me?.ready ? 'check' : me ? 'play' : 'eye'} active=${!!me?.ready} loading=${busy}
-        disabled=${!!me?.ready || !me} onClick=${ready}>${me?.ready ? '已就绪' : me ? '准备就绪' : '观战中'}<//>
+        disabled=${!!me?.ready || !me} onClick=${ready}>${me?.ready ? t('readyDone') : me ? t('readyUp') : t('spectating')}<//>
     </footer>
     <${ExitModal} open=${exit} onClose=${() => setExit(false)} solo=${solo} />
   </div>`;

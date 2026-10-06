@@ -41,6 +41,7 @@ import { data } from '../data.js';
 import { attackRangeGrid } from '../../../shared/loadoutRecord.js';
 import { SKILL_SUMMON_START_DEPLOY } from '../../../shared/constants.js';
 import { moduleBadge } from './loadoutModel.js';
+import { t } from '../i18n.js';
 import { audio } from '../audio.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -462,7 +463,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
       ${talents.map((t, i) => html`<div key=${i} class="dtalent"><b>${t.name}</b><${RichText} text=${t.descRaw || t.desc} class="dtext" /></div>`)}
     <//>` : null;
   blocks.actions = piece && editable && piece.kind !== 'item' ? html`<div key="actions" class="dactions">
-      <${Button} variant="amber" icon="close" class="dpanel__sell" onClick=${() => onSell(piece, c)}>出售<span class="dsell num">+${sell}</span><//>
+      <${Button} variant="amber" icon="close" class="dpanel__sell" onClick=${() => onSell(piece, c)}>${t('sell')}<span class="dsell num">+${sell}</span><//>
     </div>` : null;
   const out = CHESS_SECTIONS.map((k) => blocks[k]).filter(Boolean);
   // a merge-completing shop / reward card: where the elite goes (shopBar mergeHint), right under the header

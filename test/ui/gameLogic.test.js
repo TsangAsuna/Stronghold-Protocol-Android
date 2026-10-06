@@ -521,6 +521,15 @@ describe('keyboard & settings', () => {
     assert.equal(sanitizeSettings({ bgm: 0.333 }).bgm, 0.33);
     assert.equal(sanitizeSettings({ quality: 'low' }).quality, 'low');
   });
+  test('sanitizeSettings: the UI language (`lang`, default zh = absent)', () => {
+    assert.equal('lang' in sanitizeSettings({}), false, 'the default zh stores no lang key — the profile of every pre-i18n player stays byte-identical');
+    assert.equal(sanitizeSettings({ lang: 'en' }).lang, 'en');
+    assert.equal(sanitizeSettings({ lang: 'zh' }).lang, 'zh', 'an explicit zh (switched back from another language) persists');
+    assert.equal(sanitizeSettings({ lang: 'ja' }).lang, 'ja', 'ja is persisted (it falls back to zh at runtime until a ja table ships)');
+    assert.equal('lang' in sanitizeSettings({ lang: 'fr' }), false, 'a language without a table is dropped');
+    assert.equal('lang' in sanitizeSettings({ lang: 1 }), false);
+    assert.equal('lang' in sanitizeSettings({ lang: null }), false);
+  });
 });
 
 describe('result', () => {

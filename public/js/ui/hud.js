@@ -31,6 +31,7 @@ import { localAsset } from '../data.js';
 import { serverNow } from '../store.js';
 import { isCombatPhase, isBossPhase, prepCapsuleLabel, bossFrac, bossPctText, fmtNum, shopBlockReason } from './gameLogic.js';
 import { overtimeState, overtimeDrainPerSec, remainAt } from './matchStatus.js';
+import { t } from '../i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -215,7 +216,7 @@ export function ReadyToggle({ priv, onToggle, busy, readyCount, total }) {
   const btn = html`<button type="button" class=${cx('readybtn', 'tapx', ready && 'is-on', busy && 'is-busy')} disabled=${!!reason || busy}
       aria-pressed=${ready ? 'true' : 'false'} aria-describedby=${!ready && temp.count ? 'readywrap-why' : undefined} onClick=${() => onToggle(!ready)}>
     <span class="readybtn__box">${ready ? html`<${Icon} name="check" />` : null}</span>
-    <span class="readybtn__label">${ready ? '取消准备' : '准备就绪'}</span>
+    <span class="readybtn__label">${ready ? t('readyCancel') : t('ready')}</span>
     <kbd class="readybtn__key">Space</kbd>
   </button>`;
   return html`<div class="readywrap">

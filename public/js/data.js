@@ -11,6 +11,12 @@
 // draws its glyph instead of staying blank; a later retry that succeeds replaces the glyph. Other files stay `loading`
 // across their retries.
 //
+// Localization: the records are zh; for the English UI (settings `lang: 'en'`) `setLang('en')` additionally fetches
+// the text overlay data-en/*.json (tools/build-data-en.mjs, served at /data-en/) and every record accessor returns a
+// view whose `name` / `trait.desc` / `skills[].desc` / `desc` come from the overlay when present, staying zh otherwise
+// (applyTextOverlay). `ja` has no table yet and falls back to zh (TODO(ja)). Until setLang('en') the accessors return
+// the records untouched, byte-identical to the pre-i18n behaviour.
+//
 // Each file is indexed tolerantly so the getters work whether a file is
 //   - an array of records carrying an id field (id / chessId / bondId / itemId / …),
 //   - an object map { id: record },
@@ -49,6 +55,61 @@ function idOf(rec) {
     if ((typeof v === 'string' && v) || Number.isFinite(v)) return String(v);
   }
   return null;
+}
+
+/**
+ * Files that carry a text overlay for the non-zh UI (base name → overlay store name; the overlay lives at
+ * /data-en/<base>.json, tools/build-data-en.mjs). A file whose overlay is missing (not built, not shipped) simply
+ * keeps its zh texts. TODO(ja): there is no ja overlay — 'ja' falls back to zh without fetching anything.
+ */
+const LANG_FILES = Object.freeze({ chess: 'chessEn', bonds: 'bondsEn', items: 'itemsEn', enemies: 'enemiesEn' });
+const LANG_OVERLAYS = Object.freeze(new Set(Object.values(LANG_FILES)));
+
+const isStr = (v) => typeof v === 'string' && v.length > 0;
+
+/**
+ * Merge one overlay record ({ nameEn, descEn: { trait, skills, desc, descRaw } }) onto a zh record without mutating
+ * either: every text the overlay provides replaces the zh one, everything else — including the whole record when the
+ * overlay has no entry — stays zh. The UI renders `descRaw || desc` for descriptions, so both are replaced together.
+ * @param {any} rec zh record (chess: with `trait` + `skills[]`/`skill`; bonds / items / enemies: with `desc`)
+ * @param {any} ov overlay record for the same id, or null
+ * @returns {any} the localized view (a shallow copy of `rec` when anything changed, `rec` itself otherwise)
+ */
+export function applyTextOverlay(rec, ov) {
+  if (!rec || typeof rec !== 'object' || !ov || typeof ov !== 'object') return rec;
+  const out = { ...rec };
+  if (isStr(ov.nameEn)) out.name = ov.nameEn;
+  const de = ov.descEn && typeof ov.descEn === 'object' ? ov.descEn : null;
+  if (!de) return out;
+  // chess 特性: { desc, descRaw } replaces both texts of rec.trait (the module line `moduleDesc` of an elite keeps
+  // the zh text: the overlay carries the base trait only).
+  const trait = de.trait && typeof de.trait === 'object' ? de.trait : null;
+  if (trait && out.trait && typeof out.trait === 'object') {
+    out.trait = { ...out.trait };
+    if (isStr(trait.desc)) out.trait.desc = trait.desc;
+    if (isStr(trait.descRaw)) out.trait.descRaw = trait.descRaw;
+  }
+  // chess skills: one entry per rec.skills element, same order ({ name, desc, descRaw }); the default skill
+  // (rec.skill, a copy of the entry at its `index`) mirrors its entry so both views flip together.
+  if (Array.isArray(de.skills) && Array.isArray(out.skills)) {
+    const pick = (s, o) => {
+      if (!o || typeof o !== 'object' || !s) return s;
+      const merged = { ...s };
+      if (isStr(o.name)) merged.name = o.name;
+      if (isStr(o.desc)) merged.desc = o.desc;
+      if (isStr(o.descRaw)) merged.descRaw = o.descRaw;
+      return merged;
+    };
+    out.skills = out.skills.map((s, i) => pick(s, de.skills[i]));
+    if (out.skill && typeof out.skill === 'object') {
+      const i = out.skills.findIndex((s) => s && s.index === out.skill.index);
+      if (i >= 0 && de.skills[i]) out.skill = pick(out.skill, de.skills[i]);
+    }
+  }
+  // bonds / items / enemies: a plain { desc, descRaw } pair.
+  if (isStr(de.desc)) out.desc = de.desc;
+  if (isStr(de.descRaw)) out.descRaw = de.descRaw;
+  return out;
 }
 
 /**
@@ -123,6 +184,8 @@ export function createDataStore(opts = {}) {
   const entries = new Map();
   const listeners = new Set();
   const warned = new Set();
+  /** 'zh' (default — accessors return the records untouched) | 'en' | 'ja' (falls back to zh, TODO(ja)). */
+  let lang = 'zh';
 
   const notify = (name) => {
     for (const fn of [...listeners]) {
@@ -130,7 +193,12 @@ export function createDataStore(opts = {}) {
     }
   };
 
-  const urlFor = (name) => base + (DATA_FILES[name] || `${name}.json`);
+  const urlFor = (name) => {
+    // Text overlays live beside the data directory (/data-en/<base>.json); the store name is '<base>En'.
+    const m = /^([a-z][a-z0-9_-]*)En$/.exec(name);
+    if (m && LANG_OVERLAYS.has(name)) return `${base}../data-en/${m[1]}.json`;
+    return base + (DATA_FILES[name] || `${name}.json`);
+  };
 
   /**
    * One attempt at a file. Art manifests reject with a transient `{ timeout: true }` when the clock fires; a response
@@ -227,6 +295,15 @@ export function createDataStore(opts = {}) {
     return e.index;
   }
 
+  /** The localized view of a record: the overlay merge when a language with overlays is active and one exists. */
+  function localized(name, id, rec) {
+    if (lang === 'zh' || !rec) return rec;
+    const overlayName = LANG_FILES[name];
+    if (!overlayName) return rec;
+    const ov = index(overlayName)?.get(String(id));
+    return ov ? applyTextOverlay(rec, ov) : rec;
+  }
+
   return {
     /** Fetch (once) and return a file's JSON, or null when missing. */
     load,
@@ -236,13 +313,34 @@ export function createDataStore(opts = {}) {
     get: (name) => entries.get(name)?.value ?? null,
     /** 'idle' | 'loading' | 'ready' | 'missing' */
     status: (name) => entries.get(name)?.status ?? 'idle',
+    /** The active language ('zh' until setLang). */
+    get lang() { return lang; },
+    /**
+     * Switch the record texts' language (settings.js `lang`, default zh). 'en' fetches the data-en overlays and
+     * re-notifies every known file so `useData` consumers re-render with the localized accessors; 'ja' has no
+     * overlay table yet (TODO(ja)) — like unknown values it falls back to zh without fetching anything.
+     * @param {string|undefined} next
+     */
+    setLang(next) {
+      const l = next === 'en' || next === 'ja' ? next : 'zh';
+      if (l === lang) return;
+      lang = l;
+      if (l === 'en') for (const overlayName of LANG_OVERLAYS) load(overlayName);
+      // every already-known file: useData consumers filter by name, so each gets its own notification
+      for (const n of [...entries.keys()]) notify(n);
+    },
     /** Record by id from a loaded file (null when unknown / not loaded). */
     lookup(name, id) {
       if (id == null) return null;
-      return index(name)?.get(String(id)) ?? null;
+      const rec = index(name)?.get(String(id)) ?? null;
+      return localized(name, id, rec);
     },
     /** All records of a loaded file as an array (empty when not loaded). */
-    list: (name) => [...(index(name)?.values() ?? [])],
+    list: (name) => {
+      const idx = index(name);
+      if (!idx) return [];
+      return [...idx.entries()].map(([id, rec]) => localized(name, id, rec));
+    },
     /** Drop a cached file and refetch it now (subscribers are notified when it settles). */
     invalidate(name) {
       if (!entries.has(name)) return Promise.resolve(null);

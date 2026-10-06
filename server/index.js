@@ -2,6 +2,8 @@
 //
 //   * node:http static server:  /        → public/      (index.html for directories)
 //                                /data/   → data/        (generated game data)
+//                                /data-en/→ data-en/     (generated EN text overlay, tools/build-data-en.mjs — served
+//                                                         when built; without it the client falls back to data/)
 //                                /shared/ → shared/      (ESM shared with the browser)
 //                                /sim/    → server/sim/  (the battle simulation, read-only, `.js` only — client-side
 //                                                         combat, DESIGN §14; the Node-only loader nodeData.js is not served)
@@ -366,16 +368,18 @@ function splitUrl(url) {
 
 /**
  * Create the static request handler.
- * @param {{ publicDir: string, dataDir: string, sharedDir: string, simDir?: string, log?: object }} dirs
+ * @param {{ publicDir: string, dataDir: string, dataEnDir?: string, sharedDir: string, simDir?: string, log?: object }} dirs
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, rawPath: string, query: string) => Promise<void>}
  */
 /** Optional per-machine art manifest (tools/local-extract) and the empty stand-in served when it is absent. */
 const LOCAL_ART_MANIFEST = 'local-assets.json';
 const EMPTY_LOCAL_ART = Buffer.from(JSON.stringify({ version: 1, source: 'none', count: 0, groups: {} }));
 
-export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = path.join(ROOT, 'server', 'sim'), log = noopLog }) {
+export function createStaticHandler({ publicDir, dataDir, dataEnDir, sharedDir, simDir = path.join(ROOT, 'server', 'sim'), log = noopLog }) {
   const mounts = [
     { prefix: '/data/', name: 'data', dir: path.resolve(dataDir) },
+    // the EN text overlay (tools/build-data-en.mjs); like /data/, plain generated JSON — served when built
+    { prefix: '/data-en/', name: 'data-en', dir: path.resolve(dataEnDir || path.join(ROOT, 'data-en')) },
     { prefix: '/shared/', name: 'shared', dir: path.resolve(sharedDir) },
     // the simulation: ES modules only (no directory listings, no other file types, no Node-only loader)
     { prefix: '/sim/', name: 'sim', dir: path.resolve(simDir), only: new Set(['.js']), deny: SIM_PRIVATE },

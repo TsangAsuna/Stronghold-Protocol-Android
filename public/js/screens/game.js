@@ -99,6 +99,7 @@ import {
   mergeTarget, modeOffBonds, readyFundsPrompt, ownerBandId,
 } from '../ui/gameLogic.js';
 import { toast } from '../ui/toasts.js';
+import { t } from '../i18n.js';
 import { BriefingScreen } from './briefing.js';
 import { BandDraftScreen } from './bandDraft.js';
 import { ResultScreen } from './result.js';
@@ -1364,7 +1365,7 @@ function MatchScreen() {
 
       ${watchingOther && !combat ? html`<div class="gm__watching" role="status">
         <${GIcon} name="eye" /><span>正在查看 <b>${watchedName}</b> 的阵地（只读）</span>
-        ${spectator ? null : html`<${Button} size="sm" variant="primary" icon="back" onClick=${() => watchPlayer({ playerId: myId })}>返回自己<//>`}
+        ${spectator ? null : html`<${Button} size="sm" variant="primary" icon="back" onClick=${() => watchPlayer({ playerId: myId })}>${t('returnSelf')}<//>`}
       </div>` : null}
 
       ${showShop ? html`<${ShopBar} priv=${priv} editable=${editable} collapsed=${collapsed} onCollapse=${setCollapsed}

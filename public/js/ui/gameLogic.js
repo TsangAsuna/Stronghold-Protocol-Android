@@ -28,6 +28,7 @@ import { meleeOnHighGround } from '../../../shared/highGround.js';
 import { rangeTiles, pieceDir } from './facing.js';
 import { layoutPen } from '../render/pen.js';
 import { BOSS_ROW_SHIFT, MAX_COL } from '../render/prepfield.js';
+import { t } from '../i18n.js';
 import { bossLevelSeconds } from './matchStatus.js';
 
 // ---- small helpers -------------------------------------------------------------------------------
@@ -206,11 +207,11 @@ export function phaseBanner(phase, pub) {
 
 /** Label of the prep capsule ("休息一下" in the original). */
 export function prepCapsuleLabel(phase) {
-  if (phase === PHASE.SP_DRAFT) return '机变阶段';
-  if (phase === PHASE.ROUND_START) return '回合开始';
-  if (phase === PHASE.BATTLE_CHECK) return '协议启动';
-  if (phase === PHASE.SETTLE) return '回合结算';
-  return '休息一下';
+  if (phase === PHASE.SP_DRAFT) return t('capsuleSpDraft');
+  if (phase === PHASE.ROUND_START) return t('capsuleRoundStart');
+  if (phase === PHASE.BATTLE_CHECK) return t('capsuleBattleCheck');
+  if (phase === PHASE.SETTLE) return t('capsuleSettle');
+  return t('capsulePrep');
 }
 
 // ---- countdown -------------------------------------------------------------------------------------
@@ -825,25 +826,25 @@ export function offerHeader(offer) {
  * @returns {string|null} Chinese reason
  */
 export function shopBlockReason(kind, { priv, editable, slot, getChess, getItem } = {}) {
-  if (!priv) return '尚未就绪';
-  if (priv.alive === false) return '你已被淘汰';
-  if (kind === 'ready') return priv.canReady === false ? '临时整备区不为空，请先处理溢出的资源' : null;
+  if (!priv) return t('notReadyYet');
+  if (priv.alive === false) return t('eliminated');
+  if (kind === 'ready') return priv.canReady === false ? t('tempNotEmpty') : null;
   if (!editable) {
-    if (kind === 'reward') return '当前无法选择';
-    return priv.ready ? '已准备就绪，取消准备后才能操作' : '当前阶段无法进行该操作';
+    if (kind === 'reward') return t('rewardLocked');
+    return priv.ready ? t('readyUndoFirst') : t('phaseLocked');
   }
   const funds = Number(priv.funds) || 0;
   const shop = priv.shop || {};
   if (kind === 'buy' || kind === 'reward') {
-    if (!isObj(slot) || slot.sold) return kind === 'reward' ? '已选择' : '已售出';
-    if ((Number(slot.price) || 0) > funds) return '资金不足';
-    if (handFull(priv) && !completesMerge(priv, slot, { getChess, getItem })) return '整备区已满';
+    if (!isObj(slot) || slot.sold) return kind === 'reward' ? t('picked') : t('soldOut');
+    if ((Number(slot.price) || 0) > funds) return t('noFunds');
+    if (handFull(priv) && !completesMerge(priv, slot, { getChess, getItem })) return t('benchFull');
     return null;
   }
-  if (kind === 'refresh') return (Number(shop.refreshPrice) || 0) > funds ? '资金不足' : null;
+  if (kind === 'refresh') return (Number(shop.refreshPrice) || 0) > funds ? t('noFunds') : null;
   if (kind === 'levelUp') {
-    if ((Number(shop.level) || 1) >= (Number(shop.maxLevel) || 6)) return '调度中心已达最高等级';
-    return (Number(shop.upgradePrice) || 0) > funds ? '资金不足' : null;
+    if ((Number(shop.level) || 1) >= (Number(shop.maxLevel) || 6)) return t('shopMaxLevel');
+    return (Number(shop.upgradePrice) || 0) > funds ? t('noFunds') : null;
   }
   return null;
 }
@@ -1145,81 +1146,81 @@ function unitAllowed(ctx, piece, row, col, owner = null) {
  */
 export function canPlace(ctx, uid, target) {
   const no = (code, reason) => ({ ok: false, code, reason });
-  if (!ctx || !ctx.editable) return no('WRONG_PHASE', '当前阶段无法进行该操作');
+  if (!ctx || !ctx.editable) return no('WRONG_PHASE', t('phaseLocked'));
   const src = ctx.pieces.get(uid);
-  if (!src) return no('BAD_TARGET', '找不到该单位');
-  if (!isObj(target)) return no('BAD_TILE', '无法部署在该位置');
+  if (!src) return no('BAD_TARGET', t('targetMissing'));
+  if (!isObj(target)) return no('BAD_TILE', t('badDeployTile'));
   const piece = src.piece;
   const isMagic = piece.kind === 'item' && ctx.getItem(piece.id)?.itemType === 'MAGIC';
 
   if (target.area === 'hand') {
     const idx = target.idx;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= GEO.HAND_SIZE) return no('BAD_TILE', '无法放置在该位置');
-    if (src.area === 'hand' && src.idx === idx) return no('ALREADY', '位置未变化');
+    if (!Number.isInteger(idx) || idx < 0 || idx >= GEO.HAND_SIZE) return no('BAD_TILE', t('badPlaceTile'));
+    if (src.area === 'hand' && src.idx === idx) return no('ALREADY', t('positionUnchanged'));
     const occ = ctx.handAt.get(idx);
     if (!occ) return { ok: true, action: 'move' };
     if (piece.kind === 'item') {
-      if (occ.piece.kind === 'chess') return isMagic ? no('BAD_TARGET', '该道具需要放置在战场上使用') : equipCheck(ctx, piece, occ.piece);
+      if (occ.piece.kind === 'chess') return isMagic ? no('BAD_TARGET', t('magicNeedsField')) : equipCheck(ctx, piece, occ.piece);
       return { ok: true, action: 'swap' };
     }
     if (src.area === 'board') {
       if (piece.kind === 'token') return { ok: true, action: 'move' }; // back onto its stack
       if (occ.piece.kind === 'chess') {
-        if (!tileAllows(ctx, occ.piece, src.row, src.col)) return no('BAD_TILE', '交换后的单位无法部署在原位置');
+        if (!tileAllows(ctx, occ.piece, src.row, src.col)) return no('BAD_TILE', t('swapBreaksDeploy'));
         return { ok: true, action: 'swap' };
       }
       // the withdrawn operator goes to another free slot
       const free = [...Array(GEO.HAND_SIZE).keys()].some((i) => !ctx.handAt.has(i));
-      return free ? { ok: true, action: 'move' } : no('HAND_FULL', '整备区已满');
+      return free ? { ok: true, action: 'move' } : no('HAND_FULL', t('benchFull'));
     }
     return { ok: true, action: 'swap' };
   }
 
   if (target.area === 'board') {
     const { row, col } = target;
-    if (!Number.isInteger(row) || !Number.isInteger(col)) return no('BAD_TILE', '无法部署在该位置');
+    if (!Number.isInteger(row) || !Number.isInteger(col)) return no('BAD_TILE', t('badDeployTile'));
     const inField = row >= GEO.FIELD.r0 && row <= GEO.FIELD.r1 && col >= GEO.FIELD.c0 && col <= GEO.FIELD.c1;
-    if (!inField) return no('BAD_TILE', '无法部署在该位置');
+    if (!inField) return no('BAD_TILE', t('badDeployTile'));
     const occ = ctx.boardAt.get(tileKey(row, col));
     if (piece.kind === 'item') {
       if (isMagic) return { ok: true, action: 'art' };
-      if (!occ) return no('BAD_TARGET', '请将装备拖拽至干员身上');
+      if (!occ) return no('BAD_TARGET', t('equipNeedsUnit'));
       return equipCheck(ctx, piece, occ.piece);
     }
     // its own tile: re-orient in place through the direction wheel (research 09 §1.2)
     if (src.area === 'board' && src.row === row && src.col === col) return { ok: true, action: 'orient' };
     if (!tileAllows(ctx, piece, row, col)) {
       const deployable = ctx.deploy.ranged.has(tileKey(row, col));
-      return no('BAD_TILE', deployable && piecePosition(ctx, piece) === 'MELEE' ? '近战单位只能部署在地面' : '无法部署在该位置');
+      return no('BAD_TILE', deployable && piecePosition(ctx, piece) === 'MELEE' ? t('meleeGroundOnly') : t('badDeployTile'));
     }
     // a range-bound summon (战术点): inside its owner's attack range — seen from the summon's old tile when it is
     // dropped onto its own owner (the two swap)
     const ownerSwap = src.area === 'board' && occ && occ.piece.uid === piece.ownerUid ? { row: src.row, col: src.col, piece: occ.piece } : null;
     const range = summonRange(ctx, piece, ownerSwap);
-    if (range && !range.has(tileKey(row, col))) return no('BAD_TILE', '只能部署在召唤者攻击范围内');
+    if (range && !range.has(tileKey(row, col))) return no('BAD_TILE', t('summonRangeOnly'));
     if (src.area === 'board') {
       // board → board: move or swap (the occupant must be legal on the source tile — the mover's own summon excepted:
       // a moved operator's summons go back to the hand anyway)
       const ownSummon = occ && occ.piece.kind === 'token' && occ.piece.ownerUid === piece.uid;
-      if (occ && !ownSummon && !unitAllowed(ctx, occ.piece, src.row, src.col)) return no('BAD_TILE', '交换后的单位无法部署在原位置');
+      if (occ && !ownSummon && !unitAllowed(ctx, occ.piece, src.row, src.col)) return no('BAD_TILE', t('swapBreaksDeploy'));
       return { ok: true, action: occ ? 'swap' : 'move' };
     }
     if (piece.kind === 'token') {
-      if (occ) return no('BAD_TILE', '该位置已有单位');
+      if (occ) return no('BAD_TILE', t('tileOccupied'));
       const ownerDeployed = [...ctx.boardAt.values()].some((e) => e.piece.uid === piece.ownerUid);
-      if (Number.isInteger(piece.ownerUid) && !ownerDeployed) return no('BAD_TARGET', '召唤者尚未部署');
+      if (Number.isInteger(piece.ownerUid) && !ownerDeployed) return no('BAD_TARGET', t('summonerNotDeployed'));
       return { ok: true, action: 'move' };
     }
-    if ((!occ || occ.piece.kind !== 'chess') && ctx.count >= ctx.cap) return no('BOARD_FULL', '已达到部署上限');
+    if ((!occ || occ.piece.kind !== 'chess') && ctx.count >= ctx.cap) return no('BOARD_FULL', t('boardFull'));
     return { ok: true, action: occ ? 'swap' : 'move' };
   }
-  return no('BAD_TILE', '无法放置在该位置');
+  return no('BAD_TILE', t('badPlaceTile'));
 }
 
 function equipCheck(ctx, itemPiece, targetPiece) {
   const item = ctx.getItem(itemPiece.id);
-  if (item?.itemType === 'MAGIC') return { ok: false, code: 'BAD_TARGET', reason: '该道具需要放置在战场上使用' };
-  if (!isObj(targetPiece) || targetPiece.kind !== 'chess') return { ok: false, code: 'BAD_TARGET', reason: '装备只能配发给干员' };
+  if (item?.itemType === 'MAGIC') return { ok: false, code: 'BAD_TARGET', reason: t('magicNeedsField') };
+  if (!isObj(targetPiece) || targetPiece.kind !== 'chess') return { ok: false, code: 'BAD_TARGET', reason: t('equipChessOnly') };
   return { ok: true, action: 'equip' };
 }
 
@@ -1309,12 +1310,12 @@ export function dropFailureReason(ctx, uid, tile) {
   let target = null;
   if (tile.area === 'board') target = { area: 'board', row: tile.row, col: tile.col };
   else if (tile.area === 'hand') target = { area: 'hand', idx: Number.isInteger(tile.idx) ? tile.idx : tile.col };
-  else if (tile.area === 'temp') return ctx.pieces.get(uid).area === 'temp' ? null : '临时整备区无法放入单位';
-  else if (Number.isInteger(tile.row) && tile.row >= GEO.FIELD.r0 && tile.row <= GEO.FIELD.r1) return '无法部署在该位置';
+  else if (tile.area === 'temp') return ctx.pieces.get(uid).area === 'temp' ? null : t('tempUnitsOnly');
+  else if (Number.isInteger(tile.row) && tile.row >= GEO.FIELD.r0 && tile.row <= GEO.FIELD.r1) return t('badDeployTile');
   else return null;
   const res = canPlace(ctx, uid, target);
   if (res.ok || res.code === 'ALREADY') return null;
-  return res.reason || '无法放置在该位置';
+  return res.reason || t('badPlaceTile');
 }
 
 // ---- 机变 / band draft normalisation ----------------------------------------------------------------------
@@ -1614,7 +1615,7 @@ const QUALITIES = ['high', 'medium', 'low'];
 /**
  * Sanitize persisted settings.
  * @param {any} raw
- * @returns {{ bgm: number, sfx: number, voice: number, voiceLang?: 'jp'|'cn', muted: boolean, damageNumbers: boolean, quality: 'high'|'medium'|'low' }}
+ * @returns {{ bgm: number, sfx: number, voice: number, voiceLang?: 'jp'|'cn', lang?: 'zh'|'en'|'ja', muted: boolean, damageNumbers: boolean, quality: 'high'|'medium'|'low' }}
  */
 export function sanitizeSettings(raw) {
   const r = isObj(raw) ? raw : {};
@@ -1628,6 +1629,10 @@ export function sanitizeSettings(raw) {
     quality: QUALITIES.includes(r.quality) ? r.quality : DEFAULT_SETTINGS.quality,
   };
   if (r.voiceLang === 'jp' || r.voiceLang === 'cn') out.voiceLang = r.voiceLang;
+  // UI / data language: absent = zh (the default — pre-i18n profiles stay unchanged), an explicit `lang`
+  // (zh chosen after another one, en, or ja) is persisted. 'ja' has no table yet — i18n.js and data.js fall
+  // back to zh for it (TODO(ja) there) — but it is still stored like any other explicit choice.
+  if (r.lang === 'zh' || r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   return out;
 }
 

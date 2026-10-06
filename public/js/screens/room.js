@@ -22,6 +22,7 @@ import { LoadoutButton } from './loadout.js';
 import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating } from '../store.js';
 import { difficultyInfo } from './lobby.js';
+import { t } from '../i18n.js';
 
 /**
  * Seats padded to the room's capacity (co-op 4, solo 1), each null or a seat record.
@@ -258,10 +259,10 @@ export function RoomScreen() {
     : facts.isHost
       ? facts.canStart
         ? html`<span class="t-mint">*同盟人数达标，准许进入模拟</span>`
-        : html`<span class="t-lo">等待所有博士准备就绪</span>`
+        : html`<span class="t-lo">${t('roomWaitReady')}</span>`
       : myReady
         ? html`<span class="t-mint">已就绪 · 等待创建者开始模拟</span>`
-        : html`<span class="t-lo">准备就绪后，创建者即可开始模拟</span>`;
+        : html`<span class="t-lo">${t('roomStartHint')}</span>`;
 
   return html`<div class="screen room-screen">
     <header class="topbar">
@@ -318,13 +319,13 @@ export function RoomScreen() {
       <div class="room-bar__right">
         <${LoadoutButton} from="room" size="lg" class="room-loadout" />
         ${facts.isHost
-          ? html`<${Tooltip} text=${facts.canStart ? null : '仍有博士未准备就绪'}>
+          ? html`<${Tooltip} text=${facts.canStart ? null : t('roomNotAllReady')}>
               <${Button} variant="primary" size="xl" icon="play" loading=${busy === 'start'} disabled=${!facts.canStart || !online} onClick=${start}>开始模拟<//>
             <//>`
           : facts.spectating
-            ? html`<${Button} variant="secondary" size="xl" icon="eye" disabled=${true}>观战中<//>`
+            ? html`<${Button} variant="secondary" size="xl" icon="eye" disabled=${true}>${t('spectating')}<//>`
           : html`<${Button} variant=${myReady ? 'primary' : 'secondary'} size="xl" icon=${myReady ? 'check' : 'hourglass'} active=${myReady}
-              loading=${busy === 'ready'} disabled=${!online || !facts.mine} onClick=${toggleReady}>${myReady ? '已就绪' : '准备就绪'}<//>`}
+              loading=${busy === 'ready'} disabled=${!online || !facts.mine} onClick=${toggleReady}>${myReady ? t('readyDone') : t('readyUp')}<//>`}
       </div>
     </footer>
   </div>`;

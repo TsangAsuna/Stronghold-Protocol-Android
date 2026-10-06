@@ -25,6 +25,7 @@ import { html } from './components.js';
 import { GIcon } from './gameComponents.js';
 import { data, useData, localAsset, artUrls, nextArtUrl } from '../data.js';
 import { loadPref, savePref } from '../store.js';
+import { t } from '../i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -310,9 +311,9 @@ export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownM
     <button type="button" class=${cx('ewheel__btn', btnSprite && 'has-sprite', open && 'is-on', cooling && 'is-cooling')}
       style=${btnSprite ? `--ewheel-btn:url("${btnSprite}")` : ''} onClick=${() => onToggle(!open)}
       aria-expanded=${open ? 'true' : 'false'} aria-haspopup="dialog" disabled=${disabled || cooling}>
-      ${btnSprite ? null : html`<${GIcon} name="emote" />`}<span class="ewheel__label">交流</span>
+      ${btnSprite ? null : html`<${GIcon} name="emote" />`}<span class="ewheel__label">${t('emote')}</span>
     </button>
-    ${open ? html`<div class=${cx('ewheel__panel', panelBg && 'has-sprite', cellBg && 'has-cell')} style=${panelStyle} role="dialog" aria-label="交流">
+    ${open ? html`<div class=${cx('ewheel__panel', panelBg && 'has-sprite', cellBg && 'has-cell')} style=${panelStyle} role="dialog" aria-label=${t('emote')}>
       <div class="ewheel__viewport" onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
         onPointerUp=${(e) => endDrag(e, false)} onPointerCancel=${(e) => endDrag(e, true)} onWheel=${onWheel}>
         <div key=${theme.themeId} class=${cx('ewheel__page', dir > 0 && 'is-from-right', dir < 0 && 'is-from-left', dx !== 0 && 'is-dragging')}

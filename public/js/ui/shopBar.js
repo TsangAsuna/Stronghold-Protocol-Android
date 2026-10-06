@@ -25,6 +25,7 @@ import { Img, BondGlyph, CoinGlyph, GIcon, RichText } from './gameComponents.js'
 import { priceTone, mergeProgress, mergeTarget, shopBlockReason, chessLoadout, offerHeader, briefingBondTip } from './gameLogic.js';
 import { chessPortraitUrl, itemIconUrl, profIconUrl, uiUrl, skillIconUrl, skillRecordIconUrl, moduleTypeIconUrl } from './assetUrls.js';
 import { data } from '../data.js';
+import { t } from '../i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -34,7 +35,7 @@ function PriceHex({ slot, free, poor = false }) {
   if (free || price === 0) return html`<span class="scard__free">FREE</span>`;
   // like the original (img_bg_price_not_enough) the price turns grey while the funds don't cover it
   return html`<${HexBadge} value=${price} tone=${poor ? 'dark' : tone} size="md" class=${cx('scard__price', poor && 'is-poor')}
-    title=${poor ? '资金不足' : tone === 'discount' ? `折扣价（原价 ${slot.basePrice}）` : tone === 'premium' ? `加价（原价 ${slot.basePrice}）` : '价格'} />`;
+    title=${poor ? t('noFunds') : tone === 'discount' ? `折扣价（原价 ${slot.basePrice}）` : tone === 'premium' ? `加价（原价 ${slot.basePrice}）` : '价格'} />`;
 }
 
 /** Data lookups for shopBlockReason (full-hand purchases that complete a merge stay allowed). */
@@ -52,8 +53,8 @@ export function mergeHint(priv, chessId) {
 
 /** The armed (first-tapped) card's confirm strip: 确认购买 / 确认选择, or 无法购买 + why. */
 function ArmedTag({ reason, free }) {
-  if (reason) return html`<span class="scard__confirm is-no" role="status"><b>无法购买</b><small>${reason}</small></span>`;
-  return html`<span class="scard__confirm" role="status"><b>${free ? '确认选择' : '确认购买'}</b><small>再次点击</small></span>`;
+  if (reason) return html`<span class="scard__confirm is-no" role="status"><b>${t('cannotBuy')}</b><small>${reason}</small></span>`;
+  return html`<span class="scard__confirm" role="status"><b>${free ? t('confirmChoice') : t('confirmBuy')}</b><small>${t('tapAgain')}</small></span>`;
 }
 
 /**
@@ -80,7 +81,7 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
     <${Img} src=${chessPortraitUrl(m, c)} class="scard__art" />
     <span class="scard__top">
       <${TierChip} tier=${tier} size="md" />
-      <${PriceHex} slot=${slot} free=${free} poor=${reason === '资金不足'} />
+      <${PriceHex} slot=${slot} free=${free} poor=${reason === t('noFunds')} />
       ${prog.copies > 0 ? html`<span class="scard__pips" title=${`已拥有 ${prog.copies}/${prog.need}`}>
         ${Array.from({ length: prog.need }, (_, i) => html`<i key=${i} class=${i < prog.copies ? 'on' : ''}></i>`)}
       </span>` : null}
@@ -104,7 +105,7 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
     ${frozen ? html`<span class="scard__ice" aria-hidden="true"><${Icon} name="snow" /></span>` : null}
     ${armed ? html`<${ArmedTag} reason=${reason} free=${free} />` : null}
   </button>`;
-  return reason && reason !== '已售出' && !armed ? html`<${Tooltip} text=${reason} block=${true} class="scard-wrap">${card}<//>` : card;
+  return reason && reason !== t('soldOut') && !armed ? html`<${Tooltip} text=${reason} block=${true} class="scard-wrap">${card}<//>` : card;
 }
 
 /** The loadout's skill (icon; name + 已调配 in the tooltip) and an elite's module type, on an operator card. */
@@ -139,7 +140,7 @@ export function ItemCard({ slot, idx, frozen = false, reason = null, free = fals
     <span class="scard__bg" aria-hidden="true"></span>
     <span class="scard__top">
       <${TierChip} tier=${it?.tier ?? 1} size="md" />
-      <${PriceHex} slot=${slot} free=${free} poor=${reason === '资金不足'} />
+      <${PriceHex} slot=${slot} free=${free} poor=${reason === t('noFunds')} />
     </span>
     <span class="scard__itemart"><${Img} src=${itemIconUrl(m, it)} fallback=${html`<${GIcon} name="bolt" />`} /></span>
     <span class="scard__body">
@@ -149,7 +150,7 @@ export function ItemCard({ slot, idx, frozen = false, reason = null, free = fals
     ${frozen ? html`<span class="scard__ice" aria-hidden="true"><${Icon} name="snow" /></span>` : null}
     ${armed ? html`<${ArmedTag} reason=${reason} free=${free} />` : null}
   </button>`;
-  return reason && reason !== '已售出' && !armed ? html`<${Tooltip} text=${reason} block=${true} class="scard-wrap">${card}<//>` : card;
+  return reason && reason !== t('soldOut') && !armed ? html`<${Tooltip} text=${reason} block=${true} class="scard-wrap">${card}<//>` : card;
 }
 
 function SoldCard({ item = false }) {
@@ -165,12 +166,12 @@ function LevelCard({ shop, reason, armed = false, onTap }) {
   return html`<button type="button" class=${cx('lvcard', max && 'is-max', reason && 'is-disabled', armed && 'is-armed')} onClick=${() => !reason && onTap()}
       title=${reason || (armed ? `再次点击确认升级（${price} 资金）` : `升级调度中心（${price} 资金） · D`)} aria-disabled=${reason ? 'true' : 'false'}
       aria-pressed=${String(!!armed)}>
-    ${!max ? html`<${HexBadge} value=${price} tone=${reason && reason !== '调度中心已达最高等级' ? 'dark' : 'gold'} size="md" class="lvcard__price" />` : null}
+    ${!max ? html`<${HexBadge} value=${price} tone=${reason && reason !== t('shopMaxLevel') ? 'dark' : 'gold'} size="md" class="lvcard__price" />` : null}
     <span class="lvcard__frame">
       <span class="lvcard__micro">LEVEL</span>
       <b class="lvcard__num num">${lv}</b>
     </span>
-    <span class="lvcard__label">${max ? '已满级' : armed ? '确认升级' : '升级'}</span>
+    <span class="lvcard__label">${max ? t('maxLevel') : armed ? t('confirmUpgrade') : t('upgrade')}</span>
     <kbd class="lvcard__key">D</kbd>
   </button>`;
 }
@@ -309,15 +310,15 @@ export function ShopBar({ priv, editable, collapsed, onCollapse, onBuy, onLevel,
 
   return html`<section class=${cx('shopbar', frozen && 'is-frozen', !editable && 'is-locked', showReward && 'has-reward', armed && 'has-armed')} ref=${barRef} aria-label="调度中心">
     <div class="shopbar__tools">
-      <span class="shopbar__remain">剩余可放置角色：<b class=${cx('num', remaining === 0 && 't-orange')}>${remaining}</b></span>
+      <span class="shopbar__remain">${t('remainingUnits')}<b class=${cx('num', remaining === 0 && 't-orange')}>${remaining}</b></span>
       <button type="button" class=${cx('toolbtn', 'toolbtn--ice', frozen && 'is-on')} disabled=${!!frzReason} onClick=${onFreeze}
         title=${frzReason || (frozen ? '解冻商店 · F' : '冻结商店（下回合保留） · F')}>
         <${Img} src=${uiUrl(data.get('assets'), frozen ? 'shopPanel/frozen_icon2' : 'shopPanel/frozen_icon')} class="toolbtn__img" fallback=${html`<${Icon} name="snow" />`} />
-        <span>${frozen ? '解冻' : '冻结'}</span><kbd>F</kbd>
+        <span>${frozen ? t('unfreeze') : t('freeze')}</span><kbd>F</kbd>
       </button>
       <button type="button" class="toolbtn toolbtn--amber" disabled=${!!refReason} onClick=${onRefresh} title=${refReason || '刷新商店 · R'}>
         <${Img} src=${uiUrl(data.get('assets'), 'shopPanel/refresh_icon')} class="toolbtn__img" fallback=${html`<${Icon} name="refresh" />`} />
-        <span>刷新</span>
+        <span>${t('refresh')}</span>
         ${free > 0 ? html`<span class="toolbtn__free">免费 ×${free}</span>` : html`<${HexBadge} value=${shop.refreshPrice ?? 1} tone=${refReason ? 'dark' : 'gold'} size="sm" />`}
         <kbd>R</kbd>
       </button>
@@ -350,7 +351,7 @@ export function ShopBar({ priv, editable, collapsed, onCollapse, onBuy, onLevel,
           <b class="funds__num num">${funds}</b>
         </div>
         <span class="funds__label">目前资金</span>
-        <button type="button" class="funds__collapse" onClick=${() => onCollapse(true)}><${Icon} name="close" />收起</button>
+        <button type="button" class="funds__collapse" onClick=${() => onCollapse(true)}><${Icon} name="close" />${t('collapse')}</button>
       </div>
     </div>
   </section>`;

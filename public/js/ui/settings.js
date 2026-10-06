@@ -9,9 +9,21 @@ import { sanitizeSettings } from './gameLogic.js';
 import { audio } from '../audio.js';
 import { openGuide } from './guide.js';
 import { detectFeatures } from './device.js';
+import { data } from '../data.js';
+import { setLang } from '../i18n.js';
 
 /** Settings store: { bgm, sfx, muted, damageNumbers, quality }. */
 export const settingsStore = createStore(sanitizeSettings(loadPref('settings', null)));
+
+// The UI strings (public/js/i18n.js t()) and the data texts (public/js/data.js data-en overlay) follow the
+// persisted `lang` (default zh): applied once at startup and on every change; a file the overlay needs is
+// fetched by data.setLang itself (missing files fall back to the zh texts).
+setLang(settingsStore.get().lang);
+data.setLang(settingsStore.get().lang);
+settingsStore.subscribe((s) => {
+  setLang(s.lang);
+  data.setLang(s.lang);
+});
 
 settingsStore.subscribe((s) => {
   savePref('settings', sanitizeSettings(s));
@@ -47,6 +59,9 @@ function Toggle({ label, micro, value, onChange }) {
 
 const QUALITY = [['high', '高'], ['medium', '中'], ['low', '低']];
 const VOICE_LANG = [['jp', '日语 (默认)'], ['cn', '中文']];
+// UI / data language: zh is the default (the game's untranslated state); 'ja' is accepted by
+// sanitizeSettings but not offered yet — it would fall back to zh everywhere (TODO(ja) in i18n.js).
+const UI_LANG = [['zh', '中文（默认）'], ['en', 'English']];
 
 /**
  * Settings modal.
@@ -73,6 +88,13 @@ export function SettingsModal({ open, onClose }) {
         <div class="set-seg" role="radiogroup">
           ${VOICE_LANG.map(([id, label]) => html`<button key=${id} type="button" role="radio" aria-checked=${s.voiceLang === id ? 'true' : 'false'}
             class=${s.voiceLang === id ? 'is-on' : ''} onClick=${() => { updateSettings({ voiceLang: id }); audio.setVoiceLang?.(id); }}>${label}</button>`)}
+        </div>
+      </div>
+      <div class="set-row">
+        <span class="set-row__label">语言 / Language<${MicroLabel}>LANGUAGE<//></span>
+        <div class="set-seg" role="radiogroup">
+          ${UI_LANG.map(([id, label]) => html`<button key=${id} type="button" role="radio" aria-checked=${(s.lang || 'zh') === id ? 'true' : 'false'}
+            class=${(s.lang || 'zh') === id ? 'is-on' : ''} onClick=${() => updateSettings({ lang: id })}>${label}</button>`)}
         </div>
       </div>
       <${Toggle} label="静音" micro="MUTE" value=${s.muted} onChange=${(v) => updateSettings({ muted: v })} />

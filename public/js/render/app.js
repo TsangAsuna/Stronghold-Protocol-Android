@@ -1452,6 +1452,13 @@ export async function createFieldView(host, options = {}) {
     clearHl();
     renderT0Battle = null;
     mode = 'battle';
+    // the round's real batch routes (m.field meta.routes, Battle.fieldMeta): the official 红门→蓝门
+    // current — armed here, swept once on the first settled frame (render/tiles.js + board3d/scene.js)
+    routeSweepArmed = !meta.prep && Array.isArray(meta.routes) && meta.routes.length > 0;
+    try {
+      tiles.buildRoutes(meta.routes);
+      board3d?.buildRoutes(meta.routes);
+    } catch (e) { console.warn('route build failed', e); routeSweepArmed = false; }
     const rect = meta.rect ? normRect(meta.rect) : (meta.kind === 'boss' || meta.kind === 'hidden' ? { ...GEO.BOSS_RECT } : meta.kind === 'unite' ? { ...GEO.UNITE_RECT } : { ...GEO.NORMAL_RECT });
     // prep: true = a read-only scouting board (a teammate's lineup during prep): prep-style pieces, no bars
     battleMeta = { fieldId: meta.fieldId ?? null, kind: meta.kind || 'normal', rect, stageId: meta.stageId ?? null, prep: meta.prep === true };
@@ -1667,9 +1674,14 @@ export async function createFieldView(host, options = {}) {
   }
 
   let renderT0Battle = null;   // game time of the first rendered battle frame (spawn puffs skip the initial wave)
+  let routeSweepArmed = false; // the one-shot route current: armed at enterBattle, fired on the first settled frame
   let downSeq = 0;             // syncBattle pass counter: a view still marked down after a pass left the `down` list
   function syncBattle(renderT) {
     if (renderT0Battle == null) renderT0Battle = renderT;
+    if (routeSweepArmed && renderT - renderT0Battle > 0.2) {
+      routeSweepArmed = false;
+      try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+    }
     interp.sample(renderT, sample);
     for (const [id, s] of sample) {
       let v = views.get(id);

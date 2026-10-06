@@ -15,12 +15,19 @@
 // 本局信息 (GitHub issue #8 item 1, "选策略时没法返回查看禁用的干员和盟约"): 查看禁用盟约与干员 under the order list opens the
 // briefing's bond rows, legend and 本局禁用干员 again, read-only (ui/matchInfo.js MatchInfoDialog — the very blocks of the
 // briefing). The draft runs on underneath: its status line repeats the current turn and the countdown (draftInfoStatus),
-// a turn change (a pick, a skip, a turn that runs out, an AI pick) closes it, the end of the draft unmounts it, and it
+// a turn change (a pick, a skip, a turn that ran out, an AI pick) closes it, the end of the draft unmounts it, and it
 // never touches the highlighted band or the buttons.
+// 预定 (GitHub issue #247 — a communication tool for voiceless teams): a 「预定策略」 button next to the 本局信息 entry arms
+// claim mode — the next strategy avatar tapped pre-claims it (g.draftClaim) instead of only highlighting it; 「预定盟约」
+// opens a bond picker whose pick pre-claims a bond. The room sees every pre-claim (m.public.draft.claims; a player's
+// highlighted strategy is one too — the server publishes it): a corner bubble with the claimer's avatar on the strategy
+// card, and a bubble with the claimed strategy's / bond's icon on the decision-order avatar (both kinds side by side).
+// Pre-claims show no checkmark and block nothing — a confirmed pick keeps its checkmark, gets the mask overlay (嵌套蒙版)
+// and is 队友已选 as before; the server dissolves claims a confirm collides with.
 
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
-import { html, Button, Icon, MicroLabel, useTicker, secondsLeft } from '../ui/components.js';
-import { useGameData, BandIcon, RichText, PlayerAvatar, LpTower, Sprite } from '../ui/gameComponents.js';
+import { html, Button, Icon, MicroLabel, Modal, useTicker, secondsLeft } from '../ui/components.js';
+import { useGameData, BandIcon, BondGlyph, RichText, PlayerAvatar, LpTower, Sprite } from '../ui/gameComponents.js';
 import { StepHeader, ExitModal } from '../ui/matchChrome.js';
 import { MatchInfoDialog, matchInfoModel } from '../ui/matchInfo.js';
 import { actions, act } from '../ui/gameActions.js';
@@ -160,6 +167,38 @@ export function draftInfoStatus({ myPick = null, pickName = null, myTurn, turnNa
   return { text: turnName ? `${turnName} 决策中` : '等待轮到你', secs: s, tone: s != null ? tone : 'dim' };
 }
 
+/**
+ * The draft's pre-claims (预定, GitHub issue #247) from m.public.draft.claims: playerId → { strategy, bond } (ids or
+ * null; the server only publishes players claiming at least one). Tolerant of absent / malformed payloads.
+ * @param {any} claims
+ * @returns {Map<string, { strategy: string|null, bond: string|null }>}
+ */
+export function normalizeClaims(claims) {
+  const out = new Map();
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) return out;
+  for (const [pid, c] of Object.entries(claims)) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
+    const strategy = typeof c.strategy === 'string' && c.strategy ? c.strategy : null;
+    const bond = typeof c.bond === 'string' && c.bond ? c.bond : null;
+    if (!strategy && !bond) continue;
+    out.set(pid, { strategy, bond });
+  }
+  return out;
+}
+
+/**
+ * The players pre-claiming one strategy / bond (预定): their playerIds, in the claims' own (draft) order.
+ * @param {Map<string, { strategy: string|null, bond: string|null }>} claims normalizeClaims(...)
+ * @param {'strategy'|'bond'} kind
+ * @param {string} id
+ * @returns {string[]}
+ */
+export function claimersOf(claims, kind, id) {
+  const out = [];
+  for (const [pid, c] of claims instanceof Map ? claims : []) if (c && c[kind] === id) out.push(pid);
+  return out;
+}
+
 /** BAND_DRAFT screen. */
 export function BandDraftScreen() {
   const pub = useStore((s) => s.match.public);
@@ -172,11 +211,22 @@ export function BandDraftScreen() {
   const [exit, setExit] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  // 预定 (issue #247): claimMode 'strategy' → the next strategy avatar tap claims it; 'bond' → the bond picker is open
+  const [claimMode, setClaimMode] = useState(null);
+  const [bondOpen, setBondOpen] = useState(false);
 
   const mode = gd.config?.modes?.[pub?.modeId];
   const offBonds = modeOffBonds(mode); // the bonds this mode never activates (标准: 10 of 23)
   const solo = roomSolo || mode?.type === 'SINGLE' || String(pub?.modeId || '').includes('single');
   const bands = useMemo(() => allowedBands(gd.list('bands'), mode?.type || (solo ? 'SINGLE' : 'MULTI')), [gd.ready, mode?.type, solo]);
+  // the room's pre-claims (预定): playerId → { strategy, bond }; nothing to communicate in a solo draft
+  const claims = useMemo(() => (solo ? new Map() : normalizeClaims(pub?.draft?.claims)), [solo, pub?.draft?.claims]);
+  const myClaim = claims.get(myId) || null;
+  // the 预定盟约 picker's bonds: the mode's active ones, briefing order (bondOrder, then identifier)
+  const bondOptions = useMemo(() => (gd.list('bonds') || [])
+    .filter((b) => !!b && typeof b.bondId === 'string' && !offBonds.has(b.bondId))
+    .sort((a, b) => (a.bondOrder ?? 0) - (b.bondOrder ?? 0) || (a.identifier ?? 0) - (b.identifier ?? 0)
+      || (a.bondId < b.bondId ? -1 : a.bondId > b.bondId ? 1 : 0)), [gd.ready, offBonds]);
   const players = sortedPlayers(pub);
   const draft = normalizeDraft(pub?.draft, players);
   const myPick = draft.picks.get(myId) || priv?.bandId || null;
@@ -184,6 +234,9 @@ export function BandDraftScreen() {
   const skipsLeft = draft.skipsLeft.has(myId) ? draft.skipsLeft.get(myId) : (skipped ? 0 : 1);
   const canSkip = !solo && myTurn && skipsLeft > 0 && draft.order.length > 1;
   const taken = solo ? new Map() : teammateBands(draft.picks, myId);
+  // a pre-claim is possible for any seated player without a pick — a spectator seat is in no draft order (report #26)
+  const canClaim = !solo && !myPick && !draft.done && draft.order.includes(myId);
+  const claim = (kind, id) => { act('g.draftClaim', id != null ? { kind, id } : { kind }); };
   const pickers = new Map(); // bandId → players
   for (const [pid, bid] of draft.picks) {
     const p = players.find((x) => x.playerId === pid);
@@ -202,9 +255,10 @@ export function BandDraftScreen() {
   // "your turn" cue
   useEffect(() => { if (myTurn && !solo) audio.sfx('yourTurn'); }, [myTurn]);
   // the 本局信息 dialog never outlives the turn it was opened in: a turn change (a pick, a skip, a turn that ran out, an
-  // AI pick) or my pick closes it, so whoever's turn begins sees the draft
+  // AI pick) or my pick closes it, so whoever's turn begins sees the draft — claim mode with it (my pick ends it; a
+  // turn change moves the order on)
   const turnKey = `${draft.turnPid || ''}|${myPick || ''}`;
-  useEffect(() => { setInfoOpen(false); }, [turnKey]);
+  useEffect(() => { setInfoOpen(false); setClaimMode(null); setBondOpen(false); }, [turnKey]);
 
   // one countdown (user playtest #4 item 4): the current turn's — m.public.deadline, the same clock as the picker's row
   const clock = solo ? null : draftClock(pub);
@@ -237,6 +291,9 @@ export function BandDraftScreen() {
     setBusy(null);
   };
   const turnName = players.find((p) => p.playerId === draft.turnPid)?.name;
+  // who pre-claims the strategy the detail pane shows (预定, issue #247; my own claim is not news to me)
+  const selClaimers = band && !selTaken ? claimersOf(claims, 'strategy', band.bandId).filter((pid) => pid !== myId)
+    .map((pid) => players.find((x) => x.playerId === pid)?.name || '?') : [];
   useTicker(clock ? 250 : 0);
   // the picker's row shows the step header's number (both read the one turn deadline)
   const turnSecs = clock ? secondsLeft(clock.deadline) : null;
@@ -257,9 +314,18 @@ export function BandDraftScreen() {
           const picked = draft.picks.get(p.playerId) || (p.playerId === myId ? myPick : p.bandId) || null;
           const cur = !picked && (solo || draft.turnPid === p.playerId);
           const pband = picked ? gd.band(picked) : null;
+          // 预定 (issue #247): the avatar's corner bubbles — the strategy this player plans to play (no checkmark: a
+          // confirmed pick shows in the box on the right) and the bond it plans to build, side by side
+          const cl = picked ? null : (claims.get(p.playerId) || null);
           return html`<div key=${p.playerId} class=${cx('dorder', cur && 'is-cur', picked && 'is-done', p.playerId === myId && 'is-self')}>
             ${!solo ? html`<span class="dorder__idx num">${i + 1}</span>` : null}
-            <${PlayerAvatar} player=${p} self=${p.playerId === myId} />
+            <span class="dorder__ava">
+              <${PlayerAvatar} player=${p} self=${p.playerId === myId} />
+              ${cl ? html`<span class="dorder__claims">
+                ${cl.strategy ? html`<${BandIcon} bandId=${cl.strategy} size="sm" class="dorder__claim" />` : null}
+                ${cl.bond ? html`<${BondGlyph} bondId=${cl.bond} class="dorder__claim dorder__claim--bond" />` : null}
+              </span>` : null}
+            </span>
             <div class="dorder__text">
               <b class="dorder__name">${p.name || '博士'}${p.isBot ? html`<span class="dorder__ai">AI</span>` : null}</b>
               <span class="dorder__state">${picked ? html`<span class="t-mint">${pband?.name || '已选择'}</span>`
@@ -275,22 +341,43 @@ export function BandDraftScreen() {
         })}
         <${Button} variant="secondary" icon="search" block=${true} class="draft-order__info" data-testid="match-info-open"
           aria-haspopup="dialog" onClick=${() => setInfoOpen(true)}>查看禁用盟约与干员<//>
+        ${canClaim ? html`<div class="draft-order__claims" data-testid="draft-claims">
+          <${Button} variant="secondary" size="sm" icon="user" active=${claimMode === 'strategy'} block=${true}
+            title="点击后再点一个策略头像，向队友预定该策略" onClick=${() => setClaimMode(claimMode === 'strategy' ? null : 'strategy')}>预定策略<//>
+          <${Button} variant="secondary" size="sm" icon="link" block=${true} title="选择一个盟约图标，向队友预定"
+            onClick=${() => { setClaimMode('bond'); setBondOpen(true); }}>预定盟约<//>
+        </div>` : null}
         ${!solo ? html`<p class="draft-order__tip" data-testid="draft-tip">${draftTip({ timed, turnSeconds: turnLen, autoName: myPick ? null : autoName, selected: autoId === sel })}</p>` : null}
       </aside>
 
-      <section class="draft-grid" role="listbox" aria-label="策略">
+      <section class=${cx('draft-grid', claimMode === 'strategy' && 'is-claiming')} role="listbox" aria-label="策略">
         ${bands.map((b) => {
           const who = pickers.get(b.bandId) || [];
           const isTaken = taken.has(b.bandId);
+          const isPicked = isTaken || myPick === b.bandId; // confirmed (mine or a teammate's) → the mask overlay
+          const claimers = claimersOf(claims, 'strategy', b.bandId)
+            .map((pid) => players.find((x) => x.playerId === pid)).filter(Boolean);
           const offNames = bandOffBonds(b, offBonds).map((id) => gd.bond(id)?.name || id); // 本局禁用 (still selectable)
           return html`<button key=${b.bandId} type="button" role="option" aria-selected=${sel === b.bandId ? 'true' : 'false'} data-band=${b.bandId}
               aria-disabled=${isTaken ? 'true' : 'false'} title=${isTaken ? '队友已选' : offNames.length ? bandOffLine(offNames) : undefined}
-              class=${cx('dband', sel === b.bandId && 'is-sel', myPick === b.bandId && 'is-mine', isTaken && 'is-taken', offNames.length && 'is-off')} onClick=${() => { setSel(b.bandId); audio.sfx('tab', { volume: 0.5 }); }}>
-            <${BandIcon} bandId=${b.bandId} size="lg" />
+              class=${cx('dband', sel === b.bandId && 'is-sel', myPick === b.bandId && 'is-mine', isTaken && 'is-taken', offNames.length && 'is-off')} onClick=${() => {
+                if (claimMode === 'strategy' && !isTaken) {
+                  // 预定: the tap claims (tapping my own claim withdraws it) instead of only highlighting
+                  setClaimMode(null);
+                  claim('strategy', myClaim?.strategy === b.bandId ? null : b.bandId);
+                  return;
+                }
+                setSel(b.bandId); audio.sfx('tab', { volume: 0.5 });
+              }}>
+            <span class="dband__iconwrap">
+              <${BandIcon} bandId=${b.bandId} size="lg" />
+              ${isPicked ? html`<span class="dband__mask" aria-hidden="true"></span>` : null}
+            </span>
             <span class="dband__name">${b.name}</span>
             <span class="dband__lp num"><i></i>${b.totalHp}</span>
             <${BandOffTag} names=${offNames} />
             ${who.length ? html`<span class="dband__who">${who.slice(0, 4).map((p) => html`<${PlayerAvatar} key=${p.playerId} player=${p} size="sm" />`)}</span>` : null}
+            ${claimers.length ? html`<span class="dband__claims" title="预定">${claimers.slice(0, 4).map((p) => html`<${PlayerAvatar} key=${p.playerId} player=${p} size="sm" />`)}</span>` : null}
             ${isTaken ? html`<span class="dband__taken">队友已选</span>` : null}
           </button>`;
         })}
@@ -312,6 +399,8 @@ export function BandDraftScreen() {
         <div class="draft-detail__actions">
           ${myPick ? html`<p class="draft-detail__status t-mint"><${Icon} name="check" />已选择「${gd.band(myPick)?.name || ''}」${!solo && !draft.done ? '，等待其他博士' : ''}</p>`
             : selTaken ? html`<p class="draft-detail__status draft-detail__status--taken"><${Icon} name="close" />队友已选，请选择其他策略</p>`
+            : claimMode === 'strategy' ? html`<p class="draft-detail__status draft-detail__status--claim"><${Icon} name="user" />点击一个策略头像，预定给队友看</p>`
+            : selClaimers.length ? html`<p class="draft-detail__status draft-detail__status--claim"><${Icon} name="user" />${selClaimers.join('、')} 预定了该策略</p>`
             : !myTurn ? html`<p class="draft-detail__status"><${Icon} name="hourglass" />${turnName ? `${turnName} 正在决策…` : '等待轮到你'}</p>` : null}
           <div class="draft-detail__btns">
             ${!solo ? html`<${Button} variant="secondary" size="lg" icon="chevrons" disabled=${!canSkip} loading=${busy === 'skip'} onClick=${skip}
@@ -322,6 +411,21 @@ export function BandDraftScreen() {
       </aside>
     </main>
     <${ExitModal} open=${exit} onClose=${() => setExit(false)} solo=${solo} />
+    <${Modal} open=${bondOpen} micro="BOND // PRECLAIM" title="预定盟约" onClose=${() => { setBondOpen(false); setClaimMode(null); }}>
+      <p class="claim-bonds__tip">点一个盟约图标，你的决策顺序头像会带上它的气泡，告诉队友你计划走这个盟约。</p>
+      <div class="claim-bonds" role="listbox" aria-label="盟约">
+        ${bondOptions.map((b) => html`<button key=${b.bondId} type="button" role="option" data-bond=${b.bondId}
+            aria-selected=${myClaim?.bond === b.bondId ? 'true' : 'false'}
+            class=${cx('claim-bond', myClaim?.bond === b.bondId && 'is-mine')}
+            onClick=${() => { setBondOpen(false); setClaimMode(null); claim('bond', myClaim?.bond === b.bondId ? null : b.bondId); }}>
+          <${BondGlyph} bondId=${b.bondId} class="claim-bond__icon" />
+          <span class="claim-bond__name">${b.name || b.bondId}</span>
+        </button>`)}
+      </div>
+      ${myClaim?.bond ? html`<div class="claim-bonds__clear">
+        <${Button} variant="secondary" size="sm" icon="close" onClick=${() => { setBondOpen(false); setClaimMode(null); claim('bond', null); }}>取消预定盟约<//>
+      </div>` : null}
+    </${Modal}>
     <${MatchInfoDialog} open=${infoOpen} onClose=${() => setInfoOpen(false)} model=${info}
       status=${infoStatus ? html`<span class=${cx('minfo-dlg__turn', `is-${infoStatus.tone}`)}>
         <${Icon} name=${infoStatus.tone === 'mint' ? 'check' : 'hourglass'} />${infoStatus.text}${infoStatus.secs != null ? html`<b class="num">${infoStatus.secs}s</b>` : null}

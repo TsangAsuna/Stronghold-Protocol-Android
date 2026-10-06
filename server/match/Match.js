@@ -297,6 +297,9 @@ export class Match {
     this.rngBots = rng('bots');
     this.rngMeta = rng('meta');
 
+    this._pubDirty = false;
+    this._privDirty = new Set();
+
     /** @type {Map<string, PlayerState>} */
     this.players = new Map();
     const seen = new Set();
@@ -447,6 +450,23 @@ export class Match {
     return res;
   }
 
+  /**
+   * room.skins during the match (docs/SKINS.md): replace a player's chosen operator skins.
+   * @param {string} playerId
+   * @param {Record<string, string> | null} skins
+   * @returns {{ ok: true } | { error: string, detail?: string }}
+   */
+  setSkins(playerId, skins) {
+    const ps = this.players.get(playerId);
+    if (!ps || ps.isBot || ps.left) return fail(ERR.NOT_IN_ROOM);
+    let res = OK;
+    this.guard(() => {
+      ps.setSkins(skins);
+      this.markPublic();
+    });
+    return res;
+  }
+
   onDisconnect(playerId) {
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || this.disposed) return;
@@ -561,6 +581,8 @@ export class Match {
       const turn = this.draftTurn() === ps.playerId;
       d.picks[ps.playerId] = this.defaultBand(ps.playerId);
       ps.bandId = d.picks[ps.playerId];
+      // its pre-claims (预定) go with it (issue #247)
+      if (d.claims instanceof Map) d.claims.delete(ps.playerId);
       if (turn) this.startDraftTurn();
     }
     const passedRound = phase === PHASE.SETTLE ? this.round + 1 : Math.max(1, this.round);
@@ -897,6 +919,7 @@ export class Match {
         fieldId: this.fieldOf(ps),
         status: this.statusOf(ps),
         autoplay: ps.autoplay,
+        ...(Object.keys(ps.skins).length ? { skins: ps.skins } : {}),
         // the LP this round's own battle will cost at settlement so far (COMBAT / 联防 only, omitted when 0)
         ...this._pendingLpView(ps),
       })),
@@ -911,12 +934,19 @@ export class Match {
     // 最终攻势 / 隐秘核心: when the overtime drain starts (ms epoch; `deadline` is the level's 120 s countdown)
     if ((this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE) && this.overtimeAt) v.overtimeAt = this.overtimeAt;
     if (this.bossPool) v.bossHp = { hp: Math.max(0, Math.round(this.bossPool.hp)), max: Math.round(this.bossPool.maxHp) };
+    // 最终攻势 / 隐秘核心, before the battle opens: the planned seat pairing (fields[].players above only exists once
+    // it does — GitHub #190: the 休整期 had no way to tell who shares whose field). `groups` of finalAssault.js
+    // pairPlayers, re-planned by _quit while the prep runs, so always the current plan; once the fields exist they
+    // carry the pairing themselves (a stale plan is rebuilt there at battle open, never published from here).
+    if (this.bossWaves && !this.fields.length) v.bossPairing = this.bossWaves.map((g) => g.players.slice());
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline
       v.draft = {
         order: d.order.slice(), turn: this.draftTurn(), picks: { ...d.picks }, skipsLeft: { ...d.skipsLeft }, turnDeadline: d.turnDeadline || 0,
         turnSeconds: d.untimed ? 0 : this.bandTurnMs() / 1000, untimed: !!d.untimed,
+        // the pre-claims (预定, GitHub issue #247): { [playerId]: { strategy, bond } } — null when nobody claims
+        claims: this.draftClaimsView(),
       };
     }
     if (this.phase === PHASE.SP_DRAFT && this.sp) {
@@ -957,6 +987,7 @@ export class Match {
         id: piece.uid, uid: piece.uid, kind: piece.kind === 'token' ? 'token' : 'op', side: 'ally', ownerId: ps.playerId, defId: piece.id,
         name: rec ? rec.name : piece.id, tier: rec && Number.isInteger(rec.tier) ? rec.tier : 1, golden: !!(rec && rec.isGolden),
         spine: assets.spine || (rec && rec.charId) || piece.id, avatar: assets.avatar || (rec && rec.charId) || piece.id,
+        skin: piece.kind === 'chess' ? (ps.skins?.[rec?.baseId || piece.id] || ps.skins?.[piece.id]) : undefined,
         x: c, y: r, dir: pieceDir(piece), facing: pieceDir(piece) === 'LEFT' ? -1 : 1, maxHp: rec && rec.stats && Number.isFinite(rec.stats.maxHp) ? rec.stats.maxHp : 1,
         skillIndex: lo && Number.isInteger(lo.skillIndex) ? lo.skillIndex : undefined,
         moduleId: lo && typeof lo.moduleId === 'string' ? lo.moduleId : undefined,
@@ -978,6 +1009,7 @@ export class Match {
         side: 'ally', ownerId: ps.playerId, defId: piece.id,
         name: rec ? rec.name : piece.id, tier: rec && Number.isInteger(rec.tier) ? rec.tier : 1, golden: !!(rec && rec.isGolden),
         spine: assets.spine || (rec && rec.charId) || piece.id, avatar: assets.avatar || (rec && rec.charId) || piece.id,
+        skin: piece.kind === 'chess' ? (ps.skins?.[rec?.baseId || piece.id] || ps.skins?.[piece.id]) : undefined,
         x: i, y, maxHp: rec && rec.stats && Number.isFinite(rec.stats.maxHp) ? rec.stats.maxHp : 1,
         skillIndex: lo && Number.isInteger(lo.skillIndex) ? lo.skillIndex : undefined,
         moduleId: lo && typeof lo.moduleId === 'string' ? lo.moduleId : undefined,
@@ -1077,6 +1109,9 @@ export class Match {
       case 'g.bandSkip': return this.skipBand(ps);
       // the strategy highlighted in the draft screen (what a timed-out turn takes, timeoutBand)
       case 'g.bandFocus': return this.bandFocus(ps, msg.bandId ?? null);
+      // the draft's pre-claims (预定, GitHub issue #247 — the strategy the player plans to play / the bond it plans to
+      // build, shown to the room while the draft runs)
+      case 'g.draftClaim': return this.draftClaim(ps, msg.kind, msg.id ?? null);
       case 'g.buy': return ps.buy(msg.slot);
       case 'g.refresh': return ps.refresh();
       case 'g.freeze': return ps.freeze();
@@ -1313,6 +1348,8 @@ export class Match {
       order, idx: 0, picks: {}, skipsLeft: Object.fromEntries(order.map((pid) => [pid, skips])), untimed, turnDeadline: 0,
       /** playerId → the strategy highlighted in the draft screen (g.bandFocus) */
       focus: new Map(),
+      /** playerId → the draft's pre-claims (预定, GitHub issue #247): { strategy: bandId|null, bond: bondId|null } */
+      claims: new Map(),
     };
     this.setDeadline(0);
     this.startDraftTurn();
@@ -1436,6 +1473,67 @@ export class Match {
     return OK;
   }
 
+  /**
+   * g.draftClaim { kind: 'strategy'|'bond', id? } — the draft's pre-claims (预定, GitHub issue #247): a deliberate
+   * communication for voiceless teams. A seated player without a pick may claim at any point of the draft (also before
+   * its turn, and any number may claim the same strategy — only a CONFIRMED pick excludes the others); the room sees the
+   * claims in m.public.draft.claims (draftClaimsView). A null / absent id clears that kind's claim. Claims do not gate
+   * anything: a confirm that lands on a claimed strategy dissolves the claims on it (_applyBand).
+   */
+  draftClaim(ps, kind, id) {
+    if (this.phase !== PHASE.BAND_DRAFT || !this.draft) return fail(ERR.WRONG_PHASE);
+    const d = this.draft;
+    if (d.picks[ps.playerId]) return fail(ERR.ALREADY);
+    if (!ps.alive) return fail(ERR.ELIMINATED);
+    if (kind !== 'strategy' && kind !== 'bond') return fail(ERR.BAD_MSG);
+    if (!(d.claims instanceof Map)) d.claims = new Map();
+    if (id == null) {
+      const c = d.claims.get(ps.playerId);
+      if (c) {
+        c[kind] = null;
+        if (!c.strategy && !c.bond) d.claims.delete(ps.playerId);
+        this.markPublic();
+      }
+      return OK;
+    }
+    if (typeof id !== 'string') return fail(ERR.BAD_MSG);
+    if (kind === 'strategy') {
+      if (!this.gd.bandAllowed(id)) return fail(ERR.BAD_TARGET);
+      if (this.bandTaken(id, ps.playerId)) return fail(ERR.BAD_TARGET, '队友已选');
+    } else if (!this.gd.bond(id)) return fail(ERR.BAD_TARGET);
+    const c = d.claims.get(ps.playerId) || { strategy: null, bond: null };
+    c[kind] = id;
+    d.claims.set(ps.playerId, c);
+    this.markPublic();
+    return OK;
+  }
+
+  /**
+   * The room's view of the draft's pre-claims (m.public.draft.claims): `{ [playerId]: { strategy, bond } }` for every
+   * seated player without a pick. A player's strategy claim is its explicit one (g.draftClaim), else the strategy it
+   * highlights in the draft screen (g.bandFocus — tapping a strategy pre-claims it, issue #247); claims on a strategy a
+   * teammate already took are not published (the pick's checkmark and the client's mask own that state). Empty when
+   * nobody claims anything.
+   * @returns {Record<string, { strategy: string|null, bond: string|null }>}
+   */
+  draftClaimsView() {
+    const d = this.draft;
+    if (!d) return null;
+    const claims = d.claims instanceof Map ? d.claims : new Map();
+    const focus = d.focus instanceof Map ? d.focus : new Map();
+    const out = {};
+    for (const pid of d.order) {
+      if (d.picks[pid]) continue;
+      const c = claims.get(pid) || null;
+      let strategy = c && typeof c.strategy === 'string' ? c.strategy : (typeof focus.get(pid) === 'string' ? focus.get(pid) : null);
+      if (strategy && this.bandTaken(strategy, pid)) strategy = null;
+      const bond = c && typeof c.bond === 'string' ? c.bond : null;
+      if (!strategy && !bond) continue;
+      out[pid] = { strategy, bond };
+    }
+    return out;
+  }
+
   _applyBand(ps, bandId, { dedupe = false } = {}) {
     const d = this.draft;
     if (!d || !ps || d.picks[ps.playerId]) return;
@@ -1444,6 +1542,16 @@ export class Match {
     d.picks[ps.playerId] = id;
     ps.bandId = id;
     ps.lp = this.gd.startLp(id);
+    // the confirm is the player's answer: its pre-claims dissolve, and a strategy claim of a teammate on the same
+    // strategy dissolves too — it is 队友已选 now (issue #247)
+    if (d.claims instanceof Map) {
+      d.claims.delete(ps.playerId);
+      for (const [pid, c] of d.claims) {
+        if (c.strategy !== id) continue;
+        c.strategy = null;
+        if (!c.bond) d.claims.delete(pid);
+      }
+    }
     this.markPrivate(ps);
     this.markPublic();
     this.startDraftTurn();
@@ -1468,6 +1576,8 @@ export class Match {
     if (this.phase !== PHASE.BAND_DRAFT) return;
     this.cancel(this._turnTimer);
     this._turnTimer = null;
+    // the draft is over: every pre-claim (预定) with it (issue #247)
+    if (this.draft.claims instanceof Map) this.draft.claims.clear();
     for (const ps of this.order) {
       if (!this.draft.picks[ps.playerId]) {
         // one after another in seat order, so each default sees the ones assigned before it (no duplicates)
@@ -2268,7 +2378,18 @@ export class Match {
   _launch(fields) {
     const now = this.sched.now();
     this.fields = fields;
-    for (const f of fields) { f.startAt = now; f.lastProgressAt = now; }
+    // the battle-open presentation (render/app.js landingPlan: operators land one by one, then the
+    // round's route current sweeps) holds the client sim clock openPresentationMs(spec) past
+    // construction — shifting startAt by the same formula keeps a server-run field's first spawn,
+    // and every deadline derived from startAt, behind the presentation; _fieldElapsed clamps at 0
+    // meanwhile, so replicas read elapsed 0 and hold on their own (battle/runner.js). Client-combat
+    // fields step on the authority's clock, but the shifted startAt still moves their deadline right.
+    const presentOverride = Number(process.env.SP_PRESENT_MS ?? NaN);
+    for (const f of fields) {
+      const n = (f.spec?.players || []).reduce((acc, p) => acc + (Array.isArray(p?.units) ? p.units.length : 0), 0);
+      f.startAt = now + (Number.isFinite(presentOverride) ? presentOverride : 2800 + Math.min(20, n) * 220);
+      f.lastProgressAt = now;
+    }
     for (const f of fields) {
       const auth = this._authorityFor(f);
       if (auth) this._assignClient(f, auth);

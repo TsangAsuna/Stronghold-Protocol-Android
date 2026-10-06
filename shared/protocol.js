@@ -59,6 +59,19 @@ export function isBattleResult(v) {
     && optional((x) => isInt(x, 0, 1e9))(v.errors) && optional((x) => isNum(x, 0, BIG))(v.bossHpLeft);
 }
 
+// ---- 干员皮肤 (docs/SKINS.md): room.skins { skins } -----------------------------------------------------------
+
+/**
+ * `room.skins { skins }`: `skins` = `{ [baseChessId]: skinId }`.
+ * Unlike `room.loadout` these are PUBLIC: they ride in `Match.publicView().players[]` so a teammate sees your
+ * skin, which is the whole point of choosing one in a co-op match.
+ */
+export const SKIN_LIMITS = Object.freeze({ entries: 160, idLen: 64 });
+/** A skinId. NOT `isId`: those allow only `[A-Za-z0-9_\-.:]`, and skin ids carry `@` and `#` (`char_002_amiya@winter#1`). */
+export const isSkinId = (v) => typeof v === 'string' && v.length > 0 && v.length <= SKIN_LIMITS.idLen && /^[A-Za-z0-9_@#+.\-]+$/.test(v);
+/** Structural check of `room.skins.skins`. */
+export const isSkinSelection = (v) => isMap(v, SKIN_LIMITS.entries, isId, isSkinId);
+
 // ---- operator loadout (DESIGN §16): room.loadout { entries } -------------------------------------------------
 
 /**
@@ -253,6 +266,8 @@ export const C2S = {
   'room.start': {},
   // operator loadout (DESIGN §16): stored per session/seat; accepted until the match leaves INFO_CHECK
   'room.loadout': { entries: isLoadoutEntries },
+  // 干员皮肤 (docs/SKINS.md): public, accepted in any room phase
+  'room.skins': { skins: isSkinSelection },
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
@@ -266,6 +281,12 @@ export const C2S = {
   // the strategy highlighted in the draft screen (user playtest #4 item 4): a turn that runs out takes it while it is
   // free (Match.timeoutBand); absent / null clears it
   'g.bandFocus': { bandId: nullable(isId), $optional: ['bandId'] },
+  // the strategy draft's pre-claims (预定, GitHub issue #247): a deliberate communication for voiceless teams. kind
+  // 'strategy' claims a strategy (plan to play it), 'bond' a bond icon; a null / absent id clears that kind's claim.
+  // Any seated player without a pick may claim — also before its turn, and any number may claim the same strategy.
+  // Published to the room in m.public.draft.claims ({ [playerId]: { strategy: id|null, bond: id|null } }, pre-claims
+  // only — a confirmed pick keeps its checkmark); cleared by that player's pick, the end of the draft, or leaving.
+  'g.draftClaim': { kind: (v) => v === 'strategy' || v === 'bond', id: nullable(isId), $optional: ['id'] },
   'g.buy': { slot: (v) => isInt(v, 0, 15) },
   'g.refresh': {},
   'g.freeze': {},
@@ -341,7 +362,7 @@ export function validateC2S(msg) {
 
 // Event tuple kinds inside `b.ev` (DESIGN §8.2).
 export const EV = Object.freeze({
-  SPAWN: 'spawn', ATK: 'atk', DMG: 'dmg', HEAL: 'heal', SKILL: 'skill', ENGAGE: 'engage', DIE: 'die', LEAK: 'leak',
+  SPAWN: 'spawn', ATK: 'atk', DMG: 'dmg', HEAL: 'heal', SKILL: 'skill', DIE: 'die', LEAK: 'leak',
   STATUS: 'status', FX: 'fx', LAYER: 'layer', BOUNTY: 'bounty', DEPLOY: 'deploy',
 });
 

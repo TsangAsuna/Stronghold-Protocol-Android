@@ -1,5 +1,8 @@
 // tools/fetch-skin-spines.mjs — 离线下载皮肤 Spine 战斗骨骼（包含 Front/Back skel, atlas, png）
 import fs from 'node:fs';
+import { readdirSync } from 'node:fs';
+import { normalizeAtlas, atlasInfo } from './assets/atlas.mjs';
+import { pngSize } from './assets/formats.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -81,6 +84,38 @@ async function downloadOne(t) {
   return 'failed';
 }
 
+/** CDN atlases lack the `size:` page header (the base pipeline normalizes; these were raw
+ *  downloads): insert real page sizes from the sibling pngs so the render path and the
+ *  assets test (every atlas on disk has size) accept them. Idempotent. */
+async function normalizeAtlases() {
+  let fixed = 0, ok = 0;
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.atlas')) {
+        try {
+          const text = fs.readFileSync(p, 'utf8');
+          if (atlasInfo(text).hasSize) { ok++; continue; }
+          const sizes = new Map();
+          for (const page of atlasInfo(text).pages) {
+            const png = path.join(path.dirname(p), page);
+            sizes.set(page, fs.existsSync(png) ? pngSize(fs.readFileSync(png)) : null);
+          }
+          const norm = normalizeAtlas(text, { pageSize: (page) => sizes.get(page) || null });
+          if (norm.missingSize.length) { console.warn(`[skin-spines] cannot size ${p}: ${norm.missingSize.join(',')}`); continue; }
+          fs.writeFileSync(p, norm.text);
+          fixed++;
+        } catch (err) { console.warn(`[skin-spines] atlas normalize failed for ${p}: ${err.message}`); }
+      }
+    }
+  };
+  walk(TARGET_BASE);
+  console.log(`[skin-spines] atlas normalize: ${ok} already ok, ${fixed} fixed`);
+}
+
 async function main() {
   const CONCURRENCY = 12;
   let cursor = 0;
@@ -102,6 +137,7 @@ async function main() {
   await Promise.all(workers);
 
   console.log(`[skin-spines] 完成: 新下载 ${downloaded}, 已存在 ${skipped}, 失败 ${failed}`);
+  await normalizeAtlases();
 }
 
 main().catch(e => {

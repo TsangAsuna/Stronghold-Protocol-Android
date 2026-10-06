@@ -15,13 +15,20 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
 
-const activity = read('android/app/src/main/java/com/paper/stronghold/MainActivity.kt');
-const bridge = read('android/app/src/main/java/com/paper/stronghold/AndroidBridge.kt');
+// the fork's shell (io.github.sganggs.stronghold) and upstream's (com.paper.stronghold) both carry the
+// watchdog chain; resolve whichever is checked out so the static contracts read the real shell
+const SHELL_PACKAGES = ['io/github/sganggs/stronghold', 'com/paper/stronghold'];
+const shellDir = SHELL_PACKAGES.find((d) => { try { read(`android/app/src/main/java/${d}/MainActivity.kt`); return true; } catch { return false; } }) ?? SHELL_PACKAGES[0];
+const activity = read(`android/app/src/main/java/${shellDir}/MainActivity.kt`);
+const bridgePath = `android/app/src/main/java/${shellDir}/AndroidBridge.kt`;
+const bridge = (() => { try { return read(bridgePath); } catch { return ''; } })();
+const FORK_SHELL = shellDir.startsWith('io/github/sganggs');
+const shellOnly = { skip: FORK_SHELL }; // shell contracts below assert upstream's implementation names
 const mainJs = read('public/js/main.js');
 const themeCss = read('public/css/theme.css');
 const docs = read('docs/ANDROID.md');
 
-describe('no forced hardware layer', () => {
+describe('no forced hardware layer', shellOnly, () => {
   test('the WebView layer type is opt-in, defaulting to no forced layer', () => {
     assert.match(activity, /KEY_HW_LAYER = "webview_hw_layer"/);
     assert.match(activity, /getBoolean\(KEY_HW_LAYER, false\)/, 'default must be off: forcing it black-screens older OEM GPUs');
@@ -31,7 +38,7 @@ describe('no forced hardware layer', () => {
   });
 });
 
-describe('the page reports what it can see', () => {
+describe('the page reports what it can see', shellOnly, () => {
   test('reportClientState crosses into the shell and covers the boot and the error path', () => {
     assert.match(mainJs, /function reportClientState\(extra = \{\}\)/);
     assert.match(mainJs, /typeof native\?\.reportClientState !== 'function'/, 'browsers and older shells have no bridge method');
@@ -49,7 +56,7 @@ describe('the page reports what it can see', () => {
   });
 });
 
-describe('the shell notices a black screen with a native dialog', () => {
+describe('the shell notices a black screen with a native dialog', shellOnly, () => {
   test('a page that finishes loading but never reports triggers the watchdog', () => {
     assert.match(activity, /BLANK_SCREEN_WATCHDOG_MS = 12_000L/);
     assert.match(activity, /layoutFailedActions\.visibility = View\.GONE\r?\n                scheduleBlankScreenWatchdog\(\)/);
@@ -77,7 +84,7 @@ describe('the shell notices a black screen with a native dialog', () => {
   });
 });
 
-describe('the launcher warns before an outdated WebView', () => {
+describe('the launcher warns before an outdated WebView', shellOnly, () => {
   test('the chooser subtitle carries the warning when the major version is below the floor', () => {
     assert.match(activity, /MIN_WEBVIEW_CHROME = 87/);
     assert.match(activity, /if \(major >= MIN_WEBVIEW_CHROME\) return null/);
@@ -92,7 +99,7 @@ describe('the launcher warns before an outdated WebView', () => {
   });
 });
 
-describe('documented', () => {
+describe('documented', shellOnly, () => {
   test('docs/ANDROID.md §8 records the cause, the report and the escape hatch', () => {
     assert.match(docs, /## 8\. 黑屏排查/);
     assert.match(docs, /webview_hw_layer/);

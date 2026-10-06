@@ -1141,6 +1141,13 @@ export class AudioManager {
           this.unit(u.def, 'hit', `${ex.id}:boom`);
         } else if (kind === 'bounty') {
           this.battle('killCoin', { unitKey: 'coin' });
+        } else if (kind === 'leak') {
+          // an enemy reached the blue gate: the official alarm (the general bank's screen warning — the
+          // manifest has no dedicated leak slot, so the default URL follows deploy()'s fallback pattern);
+          // unitKey 'leak' lets the limiter swallow a burst of leaks into one alarm
+          const m = this.getManifest();
+          const url = m?.audio?.sfx?.battle?.leak || '/assets/audio/sfx/general/g_ui_scwarning.mp3';
+          this._play(url, { volume: 0.65, limited: true, unitKey: 'leak' });
         }
       }
     } catch (err) { this._warn('events', err); }

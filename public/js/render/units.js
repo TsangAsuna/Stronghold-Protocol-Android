@@ -127,6 +127,20 @@ const RAISED_Z = 0.12;
 /** Flying units hover this many tiles above the ground they cross. */
 export const FLY_HOVER = 0.32;
 
+/**
+ * 敌方增益光环无人机的光环半径（脚下地面蓝色外圈，渲染自绘——协议不下发敌人半径：snapshot unitInfo 无半径字段，
+ * unitStatsEntry 对敌人显式排除 range）。取值链与 sim 的 kit 同源（server/sim/content/enemies.js enemyAura）：
+ * 御4 读 bb 的 defup.range_radius，护障读 stats.rangeRadius，回退 2.5 也与 sim 一致。仅这两台（三个 key）：
+ * 远程敌人的 stats.rangeRadius 是攻击距离，不是光环，不画。
+ */
+const AURA_RING = {
+  enemy_1017_defdrn: (rec) => Number(rec?.talents?.bb?.['defup.range_radius']) || 2.5,   // 御4 · DEF 光环
+  enemy_1355_mrfly: (rec) => Number(rec?.stats?.rangeRadius) || 2.5,                     // 护障 · RES 光环
+  enemy_1355_mrfly_2: (rec) => Number(rec?.stats?.rangeRadius) || 2.5,                   // 护障·P · 同上
+};
+/** 光环外圈颜色：调色板的蓝（COLORS.objBlue）——线样同地面高亮描边，蓝色与己方攻击范围（橙条纹）区分。 */
+const AURA_RING_COLOR = COLORS.objBlue;
+
 /** b.snap `down` entry states (server/sim/constants.js DOWN_STATE). */
 export const DOWN_STATE = Object.freeze({ COUNTING: 0, WAIT_DP: 1, WAIT_TILE: 2 });
 /** Knocked-down look: model tint and alpha; redeploy ring colours per state; ring size (tiles) and height. */
@@ -318,6 +332,12 @@ export class UnitView {
     this.zTarget = null;          // battle: standing height the feet ease towards (tile top under the unit)
     this.flying = info.motion === 'FLY';
     this.hover = 0;               // flying: body height above the ground under it
+    // 光环范围外圈（御4 / 护障，AURA_RING）：半径按官方静态数据解析（数据未到时用 sim 同款回退 2.5）；
+    // 笔中预览敌人（preview）不是战斗单位，不画。
+    this.auraRange = this.isEnemy && !info.preview && AURA_RING[info.defId]
+      ? AURA_RING[info.defId](ctx.lookupDef ? ctx.lookupDef(info) : null) : 0;
+    this.auraRing = null;         // { Graphics } 脚下的光环范围外圈，首次 update 时创建
+    this._ringKey = null;         // 上次外圈重画时的 cam.version|x|y|z（变了才重画）
     this.dir = this.isEnemy ? null : unitDir(info);
     // whether the direction is known (UnitInfo / piece `dir`), not just the legacy ±1: battle and scouting views show
     // the ground wedge only then (a derived RIGHT would mislabel an UP / DOWN operator)
@@ -1018,6 +1038,9 @@ export class UnitView {
       this.aura.scale.set((s * 1.3) / 128, (s * 1.9) / 128);
     }
 
+    // 光环无人机的范围外圈（御4 / 护障）：在脚下地面上，随本体的 alpha 淡入淡出
+    if (this.auraRange) this._updateAuraRing(cam, alpha);
+
     // head height: operators/tokens are uniform chibis; enemies vary (setup-pose bounds, when known; else the chibi
     // headroom × their official model factor)
     let headTiles = UNIT.headroom;
@@ -1027,6 +1050,41 @@ export class UnitView {
     this._headTiles = headTiles;
     this.screen.top = by - headTiles * s;
     this._updateHud(dt, s, bx, by - headTiles * s, alpha, t);
+  }
+
+  /**
+   * 敌方增益光环无人机的光环范围外圈（AURA_RING：御4 / 护障）：脚下地面上投影的一圈蓝色描边（外接圆轮廓，非填充），
+   * 半径即官方光环半径。线样随地面高亮（细线、alpha 0.85，tiles.js highlight），颜色用 AURA_RING_COLOR；
+   * 相机 / 位置变化才重画；alpha 跟随本体（淡入、死亡淡出——光环服务端同样随死亡消失：Battle.enemiesInRadius
+   * 只取 alive）。站上高台时同阴影 / 地面楔形一起归入该行 surface。
+   */
+  _updateAuraRing(cam, alpha) {
+    let g = this.auraRing;
+    if (!g) {
+      g = this.auraRing = new this.P.Graphics();
+      this.ctx.layers.groundFx.addChild(g);
+    }
+    placeOnGround(this.ctx, g, this.ctx.layers.groundFx, this.y, this.z);
+    if (!this.alive) { g.visible = false; return; }
+    const key = `${cam.version}|${this.x}|${this.y}|${this.z}`;
+    if (key !== this._ringKey) {
+      this._ringKey = key;
+      const z = this.z + 0.01;
+      const p = RING_P;
+      const lw = Math.max(1.5, cam.scaleAt(this.x, this.y, z) * 0.035);   // 高亮地块的线宽（tiles.js _drawHighlights）
+      const segs = 36;
+      const pts = new Array(segs * 2);   // Graphics keeps a reference to the polygon's points: never reuse this array
+      for (let k = 0; k < segs; k++) {
+        const a = (k / segs) * Math.PI * 2;
+        cam.project(this.x + Math.cos(a) * this.auraRange, this.y + Math.sin(a) * this.auraRange, z, p);
+        pts[k * 2] = p.x; pts[k * 2 + 1] = p.y;
+      }
+      g.clear();
+      g.lineStyle(lw, AURA_RING_COLOR, 0.85, 0.5);
+      g.drawPolygon(pts);
+    }
+    g.visible = true;
+    g.alpha = alpha;
   }
 
   /**
@@ -1045,7 +1103,7 @@ export class UnitView {
       this.root.visible = !off;
       this.hud.visible = !off;
       this.shadow.visible = !off;
-      if (off) { if (this.facingArrow) this.facingArrow.visible = false; this.blockIcon.visible = false; }
+      if (off) { if (this.facingArrow) this.facingArrow.visible = false; if (this.auraRing) this.auraRing.visible = false; this.blockIcon.visible = false; }
     }
     if (off) this._offDt += dt * (this.ctx.animRate?.() || 1);
     return off;
@@ -1395,6 +1453,7 @@ export class UnitView {
     this.shadow.destroy();
     this.blockIcon.destroy();
     if (this.facingArrow) this.facingArrow.destroy();
+    if (this.auraRing) this.auraRing.destroy();
     this.hud.destroy({ children: true });
     this.root.destroy({ children: true });
   }
@@ -1404,6 +1463,7 @@ const SH_P = { x: 0, y: 0, s: 0, depth: 0 };
 const FA_P = { x: 0, y: 0, s: 0, depth: 0 };
 const FA_C = { x: 0, y: 0, s: 0, depth: 0 };
 const LG_P = { x: 0, y: 0, s: 0, depth: 0 };
+const RING_P = { x: 0, y: 0, s: 0, depth: 0 };
 const ICON_TMP = [];
 
 /**

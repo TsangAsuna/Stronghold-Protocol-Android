@@ -850,8 +850,11 @@ export async function createFieldView(host, options = {}) {
     const R = selFocusRect(row, col, prepXf.toDisp);
     if (!R) return null;
     const sz = size();
-    const k = viewKind(camKind, camOpts);
-    return fitCamera(R, { width: sz.width, height: sz.height, padding: defaultPadding(k, sz) },
+    // horizontally symmetric: the piece must land on the SCREEN centre (面向干员) — the prep kind's
+    // default padding reserves a wide left band for the team panel, which shoved the piece off-centre
+    const pad = defaultPadding('prep', sz);
+    const side = Math.max(sz.width * 0.06, 24);
+    return fitCamera(R, { width: sz.width, height: sz.height, padding: { top: pad.top, bottom: pad.bottom, left: side, right: side } },
       { margin: 0.5, headroom: 1.6, maxTilePx: SEL_FOCUS_TILE_PX });
   }
 

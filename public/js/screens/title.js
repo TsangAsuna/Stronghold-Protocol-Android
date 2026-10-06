@@ -11,7 +11,7 @@
 import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION } from '../../../shared/constants.js';
 import { settingsStore, updateSettings } from '../ui/settings.js';
-import { html, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
+import { html, Button, Icon, MicroLabel, TextField, PingPill, cx } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
 import { t, setLang } from '../i18n.js';
 import { toast } from '../ui/toasts.js';

@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.sganggs.stronghold"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.3"
+        versionCode = 2
+        versionName = "0.1.4"
         ndkVersion = "27.0.12077973"
 
         // arm64-v8a: modern phones (incl. the target Android 16 devices)

@@ -44,7 +44,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 卫戍协议
-        CFBundleShortVersionString: "0.1.3"
+        CFBundleShortVersionString: "0.1.4"
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UIRequiresFullScreen: true

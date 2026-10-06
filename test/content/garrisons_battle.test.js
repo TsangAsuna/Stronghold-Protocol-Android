@@ -305,8 +305,8 @@ test('allyenemy_sleepstun_inrange (缇缇 125): enemies or operators entering �
 // ---------------------------------------------------------------------------------------------------------------------
 // ADD_BOND grants
 
-test('ADD_BOND 华法琳 72: the front operator gets garrison_95 (own active bonds +1 / +2), cap overridden to 12 / 24', () => {
-  for (const [gid, per, cap] of [['garrison_72_a', 1, 12], ['garrison_72_b', 2, 24]]) {
+test('ADD_BOND 华法琳 72: the front operator gets garrison_95 (own active bonds +1 / +2), cap 7 / 14 (issue #175)', () => {
+  for (const [gid, per, cap] of [['garrison_72_a', 1, 7], ['garrison_72_b', 2, 14]]) {
     const give = GR(gid).bbStr.give_garrison_id;
     const h = battle({
       units: [{ id: 'warfarin', g: [gid], row: 10, col: 4 }, { id: 'front', row: 10, col: 5, bonds: ['yanShip', 'kjeragShip', 'egirShip'] }, { id: 'side', row: 11, col: 4, bonds: ['yanShip'] }],
@@ -317,7 +317,7 @@ test('ADD_BOND 华法琳 72: the front operator gets garrison_95 (own active bon
     skill(h, f);
     assert.deepEqual(gains(h), { yanShip: per, kjeragShip: per });
     for (let i = 0; i < 30; i++) skill(h, f);
-    assert.deepEqual(gains(h), { yanShip: cap, kjeragShip: cap }, `${gid}: 12/24 override, not the data's 7/14`);
+    assert.deepEqual(gains(h), { yanShip: cap, kjeragShip: cap }, `${gid}: the card text's 7/14 (issue #175)`);
     skill(h, h.unit('warfarin'));
     skill(h, h.unit('side'));
     assert.equal(gains(h).yanShip, cap, '华法琳 herself / other operators do not carry the trait');

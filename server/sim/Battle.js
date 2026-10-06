@@ -38,7 +38,7 @@ import { normDir, mirrorDir, localOrder, localBefore } from './dir.js';
 import { ProjectileSystem } from './projectiles.js';
 import { stampFear } from './fear.js';
 import { SkillRuntime } from './skills.js';
-import { updateAlly, updateEnemy, compileRoute, remainingDistance, effectiveProfile, performAttack, acquireTargets } from './ai.js';
+import { updateAlly, updateEnemy, compileRoute, remainingDistance, effectiveProfile, performAttack, acquireTargets, attackStand } from './ai.js';
 import { resolveProfile } from './professions.js';
 import { unitInfo, snapshotUnits } from './snapshot.js';
 import { toDataSource, normalizeRoute, normalizeStage, normalizeToken, normalizeEnemy } from './simdata.js';
@@ -1424,6 +1424,13 @@ export class Battle {
     const f = tpl.flags;
     if (f && target.side === 'enemy' && (f.levitate || f.unblockable || f.fear)) this._unblock(target);
     if (f && target.side === 'ally' && f.noBlock) this.releaseBlocked(target);
+    // a stun (眩晕 / 冻结 / 沉睡 / 浮空) entering an enemy interrupts the attack it is winding up (GitHub #170: a
+    // short stun must break an ongoing attack): the strike is cancelled and the attack cycle starts over — the
+    // cooldown runs again (as for a 麻痹-cancelled attack) and the wind-up stand ends
+    if (f && entered && target.side === 'enemy' && (f.stun || f.sleep) && target.atkCd > 0 && target.atkCd <= attackStand(target).wind + 1e-9) {
+      target.atkCd = target.s.interval;
+      target.atkStandUntil = -Infinity;
+    }
     if (this._hooks.statusApplied) this.emit('statusApplied', { source, target, status: key, duration, value, entered });
     return true;
   }

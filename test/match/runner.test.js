@@ -5,7 +5,7 @@
 // leak count of normal fields (state().leaks, user playtest #3 item 2).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createBattleRunner, ticksPerFrameCap, SIM_RETRIES_MAX } from '../../public/js/battle/runner.js';
+import { createBattleRunner, ticksPerFrameCap, SIM_RETRIES_MAX, openPresentationMs } from '../../public/js/battle/runner.js';
 import { createStore, initialState } from '../../public/js/store.js';
 import * as specMod from '../../server/sim/spec.js';
 import { DataSource } from '../../server/sim/simdata.js';
@@ -13,6 +13,8 @@ import { validateC2S } from '../../shared/protocol.js';
 import { validateClientResult, runHeadless } from '../../server/match/fields.js';
 import { PHASE } from '../../shared/constants.js';
 import { DATA, makeMatch } from './harness.js';
+
+process.env.SP_PRESENT_MS = '0'; // the pacing tests below drive a manual clock second by second; the presentation hold has its own test
 
 const DS = new DataSource(DATA, null);
 
@@ -79,6 +81,28 @@ function realStart(seed = 7301) {
   h.m.dispose();
   return msg;
 }
+
+test('battle-open presentation: ticks wait out openPresentationMs(spec), enemies only after the last operator lands', async () => {
+  const prev = process.env.SP_PRESENT_MS;
+  delete process.env.SP_PRESENT_MS; // the hold under test
+  try {
+    const start = realStart();
+    const r = rig();
+    r.net.emit('b.start', start);
+    await r.settle();
+    const e = r.runner._entries.get(start.battleId);
+    assert.ok(e && e.battle.started, 'battle.start ran at construction — the board is on the field for the first frame');
+    const hold = openPresentationMs(start.spec);
+    assert.ok(hold >= 2800, `baseline hold (${hold} ms)`);
+    r.advance(1000);
+    assert.equal(e.battle.tickCount, 0, 'no ticks during the presentation');
+    r.advance(hold);
+    assert.ok(e.battle.tickCount > 0, 'ticks resume after the hold');
+    assert.ok(r.feed.evs.flatMap((x) => x.ev).some((x) => x[0] === 'spawn' && x[1].side === 'ally'), 'the board spawns at the first tick after the hold');
+  } finally {
+    if (prev === undefined) delete process.env.SP_PRESENT_MS; else process.env.SP_PRESENT_MS = prev;
+  }
+});
 
 test('authoritative battle: 2× pacing, ≤ max(8, 4·speed) ticks per frame, b.snap / b.ev feed, field meta in the store, progress ~1 Hz, the server-identical result', async () => {
   const start = realStart();

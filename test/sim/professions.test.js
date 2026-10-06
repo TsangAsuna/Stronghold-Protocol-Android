@@ -413,3 +413,34 @@ test('fortress (号角 / 灰毫) is ground-only and never fires at FLY enemies',
   assert.ok(ground.unit('t_fortress').stats.attacks > 0, 'ground enemies are still attacked');
   assert.ok(ground.enemy('enemy_g').hp < 1e6, 'and take splash damage');
 });
+
+test('mystic: an attack that comes ready with no target becomes a charge at once; a held charge is released immediately (issue #181)', () => {
+  const h = makeBattle({
+    defs: { chess: { t_mystic: mk('mystic', 'CASTER', { stats: { atk: 100, bat: 3 } }) }, enemies: { enemy_dummy: dummy() } },
+    units: [{ chessId: 't_mystic', row: 9, col: 5 }], enemies: [{ key: 'enemy_dummy', pos: [9, 6] }],
+    content: 'none', autoFinish: false, timeLimit: 60, hooks: ['attack', 'damaged'], captureNoisy: true,
+  });
+  h.step();
+  const u = h.unit('t_mystic');
+  approx(u.s.interval, 3);
+  h.runUntil(() => u.stats.attacks > 0, 5);
+  const t0 = h.hooksOf('attack')[0].t;
+  // the only enemy dies: the attack that comes ready at t0 + interval becomes a charge at once (it used to wait out
+  // the attack cooldown and only then charge for another interval — 2 × interval for the first charge)
+  h.b.kill(h.enemies()[0], u);
+  h.runUntil(() => u.trait.stored > 0, 5);
+  assert.ok(h.b.time <= t0 + 3 + 0.2, `first charge ${(h.b.time - t0).toFixed(2)} s after the attack`);
+  h.run(3.1);
+  assert.ok(u.trait.stored >= 2, `charges one per interval (${u.trait.stored} after 3 s more)`);
+  // a held charge is released the moment a target appears — no fresh cooldown wait; the release attack carries it
+  const tSpawn = h.b.time, atkN = h.hooksOf('attack').length;
+  h.spawn('enemy_dummy', { pos: [9, 6] });
+  h.runUntil(() => u.stats.attacks >= 2, 2);
+  const hooks = h.hooksOf('attack');
+  assert.ok(hooks.length > atkN && hooks[atkN].t - tSpawn < 0.2, `releases the held charge at once (${hooks.length > atkN ? (hooks[atkN].t - tSpawn).toFixed(2) : 'never'} s after the target appeared)`);
+  h.run(1);
+  const hits = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isAttack && c.t >= tSpawn);
+  assert.equal(hits.length, 1 + 2, 'the release attack hits once per held charge + the attack itself');
+  assert.equal(u.trait.stored, 0, 'the held charges are spent');
+  checkInvariants(h.b);
+});

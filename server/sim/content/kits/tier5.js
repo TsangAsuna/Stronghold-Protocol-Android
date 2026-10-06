@@ -449,7 +449,15 @@ const KITS = {
             unit.mem.titiWardAcc = 0;
             for (const a of unit.mem.titiWard || []) {
               if (!a.alive || !a.deployed || !a.findBuff('titi:ward')) continue;
-              for (const e of battle.foesInRadius(a.x, a.y, RING1)) if (e.alive) battle.applyStatus(e, 'sleep', { duration: AURA_DUR, source: unit });
+              for (const e of battle.foesInRadius(a.x, a.y, RING1)) {
+                if (!e.alive) continue;
+                // the ward puts its sleepers to sleep again every pulse: each application is an official "进入沉睡"
+                // (issue #162 — trait stacks ramp per entry, e.g. the garrison_125 trait), so a re-application the
+                // engine saw as a refresh (ctx.entered false) is reported as a new entry here
+                const entered = !e.s.flags.sleep;
+                if (!battle.applyStatus(e, 'sleep', { duration: AURA_DUR, source: unit })) continue;
+                if (!entered && battle.hasHook('statusApplied')) battle.emit('statusApplied', { source: unit, target: e, status: 'sleep', duration: AURA_DUR, entered: true });
+              }
             }
           },
           onEnd({ battle, unit }) {

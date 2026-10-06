@@ -11,13 +11,14 @@
 //      nowhere to go); moving the owner sends it back anyway (PRTS 卫戍协议/帮助 "移动干员时，其所属召唤物全部退场并重置
 //      至手牌区") — with no room it leaves the board until the next round start.
 // The sim side (突袭 landing tile, tactical point) is test/sim/feedback1-water.test.js.
-// Owner's decision 2026-10-04 reverses DESIGN §22.6: the trait 「可以放置于远程位」 is not trusted. Only elite
+// Data-driven since the 0.1.4 sync (GitHub #153/#195): the trait 「可以放置于远程位」 IS trusted — every variant
+// whose trait.desc carries it (崖心 / 见行者 / 歌蕾蒂娅, normal and golden) deploys on a 高台. Previously only elite
 // 歌蕾蒂娅 carrying HOK-Y 淡金坠饰 (uniequip_003_glady) may stand on a 高台. The battle keeps position MELEE
 // (on a 高台 she attacks but blocks nothing). A bot may plan that one loadout on a 高台; everyone else stays on the ground.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDeployMap, canPlace as boardCanPlace, legalTiles, positionClass, placeClass, tileKey, ownerRangeKeys } from '../../server/match/board.js';
-import { GLADIIA_HOK_Y } from '../../shared/highGround.js';
+import { GLADIIA_HOK_Y, meleeOnHighGround } from '../../shared/highGround.js';
 import { ERR } from '../../shared/constants.js';
 import { DATA, makeMatch, give, giveItem, checkInvariants, chessOfTier } from './harness.js';
 import { botPrep, planLayout, fieldModel } from '../../server/match/bot.js';
@@ -337,19 +338,20 @@ test('高台 data: no chess stores placement; HOK-Y is 淡金坠饰 on the elite
   assert.equal(e.position, 'MELEE');
 });
 
-test('高台 table: (operator, module, tile) → allowed only for elite 歌蕾蒂娅 + HOK-Y on a 高台; ranged unchanged', () => {
+test('高台 table: the branch trait 「可以放置于远程位」 grants the 高台 (data-driven, GitHub #153/#195); others unchanged', () => {
   const { m, ps } = prep(HIGH_STAGE);
   assert.deepEqual([...ps.deployMap()].filter(([, cls]) => cls === 'ranged').map(([k]) => k).sort(), HIGH);
-  // rows: chess id, module set on the 歌蕾蒂娅 loadout (null = leave the default), expect 高台
+  // rows: chess id, module set on the 歌蕾蒂娅 loadout (null = leave the default), expect 高台 —
+  // the module no longer matters: every variant whose trait.desc carries the text is high-capable
   const rows = [
     [GLAD_E, GLADIIA_HOK_Y, true],
-    [GLAD_E, HOK_X, false],
-    [GLAD_E, 'none', false],
-    [GLAD_N, GLADIIA_HOK_Y, false],
-    [GLAD_N, null, false],
-    [CLIFF_E, GLADIIA_HOK_Y, false],
-    [FORCER_N, null, false],
-    [FORCER_E, null, false],
+    [GLAD_E, HOK_X, true],
+    [GLAD_E, 'none', true],
+    [GLAD_N, GLADIIA_HOK_Y, true],
+    [GLAD_N, null, true],
+    [CLIFF_E, GLADIIA_HOK_Y, true],
+    [FORCER_N, null, true],
+    [FORCER_E, null, true],
   ];
   const owned = new Map();
   for (const [id, module, allowHigh] of rows) {
@@ -389,9 +391,8 @@ test('高台 table: (operator, module, tile) → allowed only for elite 歌蕾�
   m.dispose();
 });
 
-test('高台 client: drag highlights follow the loadout; a 重装 keeps "近战单位只能部署在地面"', () => {
+test('高台 client: drag highlights follow the trait, not the loadout; a 重装 keeps "近战单位只能部署在地面"', () => {
   const { m, ps } = prep(HIGH_STAGE);
-  equip(ps, GLADIIA_HOK_Y);
   const glad = give(m, ps, GLAD_E);
   const normal = give(m, ps, GLAD_N);
   const cliff = give(m, ps, CLIFF_E);
@@ -406,7 +407,7 @@ test('高台 client: drag highlights follow the loadout; a 重装 keeps "近战�
   for (const k of HIGH) {
     const [r, c] = rc(k);
     assert.equal(clientCanPlace(ctx, glad.uid, board(r, c)).ok, true, k);
-    for (const p of [normal, cliff, tank]) {
+    for (const p of [tank]) {
       const res = clientCanPlace(ctx, p.uid, board(r, c));
       assert.equal(res.ok, false, p.id);
       assert.equal(res.reason, '近战单位只能部署在地面');
@@ -483,31 +484,36 @@ test('高台 bots: elite 歌蕾蒂娅 + HOK-Y takes a 高台 that covers the roa
   m.dispose();
 });
 
-test('高台 bots: everyone else stays on the road; elite 歌蕾蒂娅 + HOK-Y may take a 高台 when the ground is full', () => {
+test('高台 bots: bots prefer the road; a trait carrier may take a 高台 when the ground is full, a 重装 never does', () => {
   const { m, ps } = prep(HIGH_STAGE, 11);
   const pieces = ['chess_char_4_02_a', GLAD_N, FORCER_N, 'chess_char_2_03_a'].map((id) => give(m, ps, id));
   const plan = planLayout(m, ps, pieces);
   const map = ps.deployMap();
   const road = fieldModel(m, ps).ground;
+  // 'chess_char_4_02_a' carries no 高台 trait: the road. The trait carriers may plan onto a 高台.
   for (const p of pieces.slice(1)) {
     const k = plan.get(p.uid);
+    if (map.get(k) === 'ranged') {
+      assert.ok(meleeOnHighGround(DATA.chess[p.id]), `${p.id} on a 高台 needs the trait (${k})`);
+      continue;
+    }
     assert.equal(map.get(k), 'melee', `${p.id} on a ground tile (${k})`);
     assert.ok(road.has(k), `${p.id} on an enemy road tile (${k})`);
-    assert.equal(move(m, p.uid, board(10, 4)).error, ERR.BAD_TILE, `${p.id} deploy refused`);
   }
+  // the ground is full: a trait carrier plans onto a 高台, and the deploy accepts it
   const elite = give(m, ps, GLAD_E);
-  equip(ps, GLADIIA_HOK_Y);
   const melee = [...map].filter(([, cls]) => cls === 'melee').map(([k]) => k);
   const highPlan = planLayout(m, ps, [elite], undefined, { occupied: new Set(melee) });
   const hk = highPlan.get(elite.uid);
-  assert.equal(map.get(hk), 'ranged', `HOK-Y planned on a 高台 (${hk})`);
+  assert.equal(map.get(hk), 'ranged', `the trait planned 歌蕾蒂娅 on a 高台 (${hk})`);
   const [hr, hc] = rc(hk);
   assert.deepEqual(move(m, elite.uid, board(hr, hc)), { ok: true });
   checkInvariants(m);
   assert.deepEqual(toHand(m, ps, elite), { ok: true });
-  equip(ps, 'none');
-  const refused = planLayout(m, ps, [elite], undefined, { occupied: new Set(melee) });
-  assert.equal(refused.get(elite.uid), undefined, 'no module: a 高台 is not a fallback');
-  assert.equal(move(m, elite.uid, board(10, 4)).error, ERR.BAD_TILE);
+  // a plain 重装 has no trait: no 高台, in plan or by hand
+  const tank = give(m, ps, chessOfTier(1, TANK).find((x) => m.pool.has(x)));
+  const refused = planLayout(m, ps, [tank], undefined, { occupied: new Set(melee) });
+  assert.equal(refused.get(tank.uid), undefined, 'a 重装: a 高台 is not a fallback');
+  assert.equal(move(m, tank.uid, board(10, 4)).error, ERR.BAD_TILE);
   m.dispose();
 });

@@ -599,7 +599,12 @@ export function createBattleRunner(deps) {
     emit('field', field);
     try { store.patch('match', { field }); } catch { /* ignore */ }
     publishState();
-    try { e.battle.drainEvents(); } catch { /* the view starts from the meta + this frame */ }
+    // battle.start() at construction emitted the board's spawn/deploy events before anything was
+    // listening: replay them after the field meta (the view builds from the meta, the events give
+    // every unit its model form / audio registration) instead of dropping them
+    let born = [];
+    try { born = e.battle.drainEvents() || []; } catch { born = []; }
+    if (born.length) emit('ev', { t: 'b.ev', fieldId: e.fieldId, gt: 0, ev: born });
     emit('snap', frameOf(e));
     schedule();
   }

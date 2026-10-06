@@ -553,6 +553,34 @@ test('1_17 深靛: 光影迷宫 interval ×0.7, bound enemies take 12 % ATK ever
   done(h2);
 });
 
+test('1_17 深靛: while her only target is bound the mystic trait stores its energy and releases it the moment she is free again (issue #181)', () => {
+  const id = 'chess_char_1_17_a';
+  const h = run({ defs: { enemies: { e: dummy('e') }, chess: noGarrison(id) }, units: [{ chessId: id, row: 10, col: 4 }], enemies: [{ key: 'e', pos: [10, 6] }] });
+  const u = h.unit(id);
+  let e = null;
+  h.b.applyStatus(u, 'silence', { duration: 60 }); // the trait / talent mechanics, not her S2
+  h.runUntil(() => h.hooksOf('attack').some((c) => c.attacker === u), 10);
+  e = h.enemies()[0]; // enemies spawn on the first tick, not at construction
+  const atkN = h.hooksOf('attack').length, t0 = h.hooksOf('attack')[atkN - 1].t;
+  approx(u.s.interval, u.base.bat, 'no skill: the plain interval');
+  // the only enemy is bound for 4 s (the talent's 柔光缚目): she holds her fire and the attack that comes ready at
+  // t0 + interval turns into one stored energy instead of idling for the rest of the bind
+  h.b.applyStatus(e, 'bind', { duration: 4 });
+  const tBind = h.b.time;
+  h.runUntil(() => u.trait.stored > 0, 4);
+  assert.ok(h.b.time <= t0 + u.s.interval + 0.2, `stores during the bind (t=${(h.b.time - t0).toFixed(2)})`);
+  assert.equal(h.hooksOf('attack').length, atkN, 'holds her fire while the only target is bound');
+  h.runUntil(() => !e.s.flags.bind, 5);
+  h.runUntil(() => u.stats.attacks >= 2, 2);
+  const rel = h.hooksOf('attack')[atkN];
+  assert.ok(rel && rel.t - tBind <= 4.5, `attacks as soon as the bind ends (${rel ? (rel.t - tBind).toFixed(2) : 'never'} s after it started)`);
+  h.run(1);
+  const hits = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isAttack && c.t >= rel.t - 1e-9);
+  assert.ok(hits.length >= 2, `the release attack carries the stored energy (${hits.length} hits)`);
+  assert.equal(new Set(hits.map((c) => c.dmg.attackId)).size, 1, 'one attack');
+  done(h);
+});
+
 test('1_18 宴: 落地斩·破门 −50 % HP, ATK +atk and arts damage for `duration` s; 认真模式 ASPD; elite 庇护 below 50 %', () => {
   const id = 'chess_char_1_18_a', bb = bbOf(id), t = tal(id);
   // kit semantics in isolation: her 特质 garrison_01 (弱点伤害) would re-type every hit by the target's DEF/RES

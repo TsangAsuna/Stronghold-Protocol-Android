@@ -44,6 +44,24 @@ function arena(o = {}) {
 // ---------------------------------------------------------------------------------------------------------------
 // #1 近地悬浮
 
+test('#205 a special priority outranks the attacker blocked enemy: the fastshot shoots the drone past its blocker', () => {
+  const h = makeBattle({
+    units: [{ chessId: 'chess_char_3_01_a', row: 10, col: 4 }],
+    seed: 3, autoFinish: false, timeLimit: 120, captureNoisy: true,
+  });
+  h.step();
+  const ground = put(h, 'enemy_10012_originius', [10, 6], { move: true });
+  const air = put(h, FLOATER, [10, 8], { move: true });
+  h.run(5);
+  const op = h.b.allyUnits.find((u) => u.kind === 'op');
+  assert.ok(ground.blockedBy === op, 'she blocks the ground enemy');
+  assert.ok(air.isFlying, 'the drone is flying');
+  const dGround = dealt(h, op, ground), dAir = dealt(h, op, air);
+  assert.ok(dAir > 0, 'she engages the flying one at all');
+  assert.ok(dAir >= dGround, 'fly priority beats her own blocker (air ' + dAir + ' vs ground ' + dGround + ')');
+  checkInvariants(h.b);
+});
+
 test('#1 the user\'s case: ground-only operators never hit a 近地悬浮 enemy (melee 山 / 泡泡, 迷迭香\'s ground-only shots); ranged 能天使 and the lord 银灰 do', () => {
   const cases = [
     ['chess_char_5_17_a', 10, 5, false],   // 山 (fighter, melee)

@@ -6,7 +6,7 @@
 //   ADD_BOND            grants `give_garrison_id` to other operators before the first deployment (targets parsed from
 //                       the text: 身前一格 / 身前一格【X】/ 自身和身前一格 / 同一行最右边 / 所有【X】). A unit owns a garrison id
 //                       at most once (耀骑士临光 already carries the 144/159 it grants to itself). The 华法琳-granted trait
-//                       (garrison_95) is capped 12 / 24 per battle instead of the data's 7 / 14 (research 02 Addendum 1).
+//                       (garrison_95) is capped 7 / 14 per battle (the card text; issue #175 — see GRANTED_CAP_OVERRIDE).
 //   layer events        act1autochess_gar_event_useskill (skillStart) · _selfkillenemy (kill, every check_cnt) ·
 //                       _selfdead (death 'killed'; texts with 替身 also on every substitute ⇄ body swap, read from the
 //                       dollkeeper flag unit.trait.doll) · _consume_ammo (ammoUsed; range_id 0-1 self, 1-1 front tile,
@@ -40,8 +40,9 @@ import * as S from '../support/index.js';
 import { mitigate } from '../../damage.js';
 import { frontOf } from '../../dir.js';
 
-/** 华法琳's granted trait: per-battle cap override (research 02 Addendum 1: PRTS 3/27 "初始7/精锐14 → 初始12/精锐24"). */
-export const GRANTED_CAP_OVERRIDE = Object.freeze({ garrison_95_a: 12, garrison_95_b: 24 });
+/** 华法琳's granted trait: per-battle cap override (garrison_95's 7 / 14 live only in the card text — issue #175: the
+ *  official 3 / 27 adjustment was a NERF to the described 初始7/精锐14, not the 12 / 24 the PRTS page claimed). */
+export const GRANTED_CAP_OVERRIDE = Object.freeze({ garrison_95_a: 7, garrison_95_b: 14 });
 
 const ids = (s) => String(s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const EMPTY = Object.freeze([]);

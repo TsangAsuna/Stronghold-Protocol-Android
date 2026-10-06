@@ -76,7 +76,10 @@ export function updateAlly(b, u, dt) {
   if (prof.noAttack) return;
   if (prof.noAttackUnlessSkill && !(sk && sk.active)) return;
   if (u.s.flags.disarm) return;
-  if (u.atkCd > 0) return;
+  // a 秘术师 holding stored attack energy releases it the moment a target appears — the stored charge is a ready
+  // attack, not a fresh cooldown wait (issue #181)
+  const stored = prof.sub === 'mystic' ? Math.max(0, u.trait.stored ?? 0) : 0;
+  if (u.atkCd > 0 && !stored) return;
   if (prof.canAttack && !prof.canAttack(b, u)) return;
   let targets = acquireTargets(b, u, prof);
   if (!targets.length) { u.trait.hadTarget = false; return; }
@@ -86,6 +89,12 @@ export function updateAlly(b, u, dt) {
     if (prof.noAttack || !u.alive) return;
     targets = acquireTargets(b, u, prof);
     if (!targets.length) return;
+  }
+  // the attack releases the stored energy: its hit count is captured here and the energy is spent at once —
+  // hitsFn would only consume it on the projectile's impact, so a charge still "held" would fire again next frame
+  if (stored > 0) {
+    prof = Object.assign({}, prof, { hits: 1 + stored, hitsFn: null });
+    u.trait.stored = 0;
   }
   performAttack(b, u, prof, targets);
   u.atkCd = Math.max(u.atkCd, u.s.interval);

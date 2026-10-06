@@ -385,6 +385,13 @@ export class SkillRuntime {
       if (this.healSkill) return b.injuredAlliesInKeys(keys, u).length > 0;
       if (b.enemiesInKeys(keys, u, u.profile).length > 0) return true;
     }
+    // a melee skill with its own expanded range fires as soon as an enemy is inside THAT range, not only inside
+    // the normal attack range (GitHub #248: Vulpisfoglia, Gavial the Invincible S2 — the skill would reach them,
+    // so waiting for the normal range only delays the cast)
+    if (this.spec?.targeting?.rangeGrid && !this.healSkill) {
+      const expanded = absoluteRangeKeys(this.spec.targeting.rangeGrid, u.tileR, u.tileC, u.dir, 0);
+      if (expanded.length && b.enemiesInKeys(expanded, u, { canHitFly: true }).length > 0) return true;
+    }
     // the enemies a unit blocks are always its targets (Battle.blockedTargets), in range or not — PRTS 卫戍协议/帮助
     // "敌人被近战干员自身阻挡" satisfies the target condition of the basic strategy (a ranged blocker too: user playtest #6)
     if (!this.healSkill && u.blocking.length && b.blockedTargets(u, u.profile).length > 0) return true;

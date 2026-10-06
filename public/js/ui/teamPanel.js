@@ -1,6 +1,9 @@
 // Left team panel (research 06 §11.1, research 09 §3.1): one row per seat — avatar (band icon once picked), name, LP
 // tower, status glyph (… acting / ✓ ready / ⌛ deciding / ⚔ combat / door left / ✕ dead), AI badge, "you" marker, the
 // field being watched (eye badge), and emote bubbles.
+// Same battlefield (GitHub #190, the official co-op's framed avatars): the rows of the players sharing the viewer's
+// field wear a gold frame from the boss round's 休整期 (planned pairing, m.public bossPairing) to the battle's end
+// (fields[].players) and during 联防 (pub.unite) — fieldmates() below.
 // Observing (client-side combat, `observe` prop — the official flow): tapping a teammate's avatar expands a mint
 // "前往查看" button under the row (when that teammate can be observed now; otherwise the reason is toasted through
 // onWatch); while observing, the own row shows a "返回战场" button. Without `observe` (server-run combat) a click
@@ -65,6 +68,37 @@ export function rowLpTip(lp, cap = 10) {
 }
 
 /**
+ * The players sharing the viewer's battlefield (GitHub #190) — the other ids of the viewer's field, or null while
+ * nothing is known: 联防 is one shared field for its helpers and the leakers whose enemies re-entered on it
+ * (pub.unite), a running 最终攻势 / 隐秘核心 lists the seat pairs on pub.fields[].players, and during the prep the
+ * round's planned pairing is pub.bossPairing (server/match/Match.js _planBossWaves; the battle's own fields[] only
+ * exist once it opened). A normal round's own field (n:<playerId>) holds one player ⇒ null.
+ * @param {any} pub m.public @param {string} myId the viewer
+ * @returns {Set<string>|null}
+ */
+export function fieldmates(pub, myId) {
+  if (!pub || !myId) return null;
+  if (pub.phase === PHASE.UNITE && pub.unite) {
+    const ids = new Set([...(Array.isArray(pub.unite.helpers) ? pub.unite.helpers : []), ...(Array.isArray(pub.unite.leakers) ? pub.unite.leakers : [])]);
+    if (!ids.has(myId)) return null; // a spectator has no field of its own
+    ids.delete(myId);
+    return ids.size ? ids : null;
+  }
+  const f = Array.isArray(pub.fields) ? pub.fields.find((x) => x && Array.isArray(x.players) && x.players.includes(myId)) : null;
+  if (f) {
+    const ids = new Set(f.players);
+    if (f.kind === 'unite' && pub.unite && Array.isArray(pub.unite.leakers)) for (const id of pub.unite.leakers) ids.add(id);
+    ids.delete(myId);
+    return ids.size ? ids : null;
+  }
+  const g = Array.isArray(pub.bossPairing) ? pub.bossPairing.find((g) => Array.isArray(g) && g.includes(myId)) : null;
+  if (!g) return null;
+  const ids = new Set(g);
+  ids.delete(myId);
+  return ids.size ? ids : null;
+}
+
+/**
  * @param {{ pub:any, myId:string, watching:string|null, bubbles: Map<string,{id:string,seq:number}>, onWatch:(p:any)=>void,
  *   compact?: boolean, teamLp?: number|null, self?: { lp?: number|null, pending: number, unite: boolean, left?: number|null } | null,
  *   cap?: number, uniteLocal?: Record<string, number> | null,
@@ -77,6 +111,7 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
   useEffect(() => { setOpenPid(null); }, [phaseKey, watching, observe?.observing]);
   const players = sortedPlayers(pub);
   if (!players.length) return null;
+  const mates = fieldmates(pub, myId); // the same battlefield's rows carry the gold frame (GitHub #190)
   const click = (p, self) => {
     if (!observe) { onWatch(p); return; }
     if (self) { if (observe.observing) observe.onBack(); setOpenPid(null); return; }
@@ -94,9 +129,10 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
       const offline = p.connected === false && !p.isBot;
       const open = !!observe && openPid === p.playerId && !self;
       const back = !!observe && self && observe.observing;
-      const title = observe ? (self ? (observe.observing ? '返回战场' : '你自己') : `查看 ${p.name} 的战场`) : (self ? '查看自己的阵地' : `查看 ${p.name} 的阵地`);
+      const mate = !self && !!mates && mates.has(p.playerId);
+      const title = observe ? (self ? (observe.observing ? '返回战场' : '你自己') : `${mate ? '与你在同一战场 · ' : ''}查看 ${p.name} 的战场`) : (self ? '查看自己的阵地' : `${mate ? '与你在同一战场 · ' : ''}查看 ${p.name} 的阵地`);
       const lp = rowLp(p, pub, self ? selfLive : null, { uniteLocal, cap });
-      return html`<div key=${p.playerId} class=${cx('team__row', self && 'is-self', watched && 'is-watched', p.alive === false && 'is-dead', open && 'is-open')}>
+      return html`<div key=${p.playerId} class=${cx('team__row', self && 'is-self', mate && 'is-mate', watched && 'is-watched', p.alive === false && 'is-dead', open && 'is-open')}>
         <button type="button" class="team__btn" onClick=${() => click(p, self)} title=${title} aria-expanded=${observe && !self ? String(open) : undefined}>
           <${PlayerAvatar} player=${p} self=${self} />
           <span class="team__seat num">P${(p.seat ?? 0) + 1}</span>

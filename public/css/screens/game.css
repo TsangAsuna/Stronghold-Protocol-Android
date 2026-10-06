@@ -304,6 +304,9 @@
 .team__status.is-red, .team__status.is-offline { color: var(--red-premium); }
 .team__eye { color: var(--amber); display: grid; }
 .team__eye .icon { width: .2rem; height: .2rem; }
+/* 同一战场 (GitHub #190): the seat pair of 最终攻势 / 隐秘核心 and the 联防 defenders — the official co-op frames the
+   teammates sharing one's field. Before is-self / is-watched / is-open so the transient rings keep precedence. */
+.team__row.is-mate .pavatar { box-shadow: 0 0 0 2px var(--gold-2), 0 0 .18rem var(--gold-a20); }
 .team__row.is-self .pavatar { box-shadow: 0 0 0 2px var(--mint-500), 0 0 .18rem rgba(23, 249, 183, .35); }
 .team__row.is-watched .pavatar { box-shadow: 0 0 0 2px var(--amber), 0 0 .18rem rgba(246, 163, 41, .45); }
 .team__row.is-dead .team__name { color: var(--text-dim); text-decoration: line-through; }

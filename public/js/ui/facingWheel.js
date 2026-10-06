@@ -23,9 +23,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html } from './components.js';
+import { audio } from '../audio.js';
 import { LocalSprite } from './gameComponents.js';
 import { DIRS, DIR_LABEL, DEAD_ZONE_TILES, dirFromDelta, dirFromKey, rangeTiles, normDir, boardDir, viewMirrored } from './facing.js';
-import { audio } from '../audio.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 const rawOf = (view) => (view && view.raw) || view || null;
@@ -169,6 +169,7 @@ export function useTileScreen(view, row, col) {
 const CHEV = { UP: [0, -64, -90], RIGHT: [64, 0, 0], DOWN: [0, 64, 90], LEFT: [-64, 0, 180] };
 
 function Chevron({ dir, on, onClick }) {
+  const { onCommit, onPreview } = arguments[0] || {};
   const [x, y, rot] = CHEV[dir];
   const isDown = useRef(false);
   return html`<g class=${cx('fwheel__chev', on && 'is-on')} transform=${`translate(${x} ${y}) rotate(${rot})`}
@@ -238,6 +239,7 @@ export function FacingWheel({ view, row, col, grid, name = '', onPreview, onComm
   const onDirectCommit = (selectedDir) => {
     if (!selectedDir) return;
     setDir(selectedDir);
+    try { audio.sfx('click'); } catch { /* ignore */ }
     onCommit(boardDir(selectedDir, live.current.mirror));
   };
   onDirectCommit.preview = (selectedDir) => {
@@ -270,6 +272,7 @@ export function FacingWheel({ view, row, col, grid, name = '', onPreview, onComm
     setDrag(null);
     const d = choose(e.clientX, e.clientY) || live.current.dir;
     if (d) {
+      try { audio.sfx('click'); } catch { /* ignore */ }
       onCommit(boardDir(d, live.current.mirror));
     } else {
       onCancel();
@@ -305,7 +308,7 @@ export function FacingWheel({ view, row, col, grid, name = '', onPreview, onComm
         <path class=${cx('fwheel__quad', dir === 'DOWN' && 'is-on')} d="M0 100 L-50 50 L0 0 L50 50 Z" />
         <path class=${cx('fwheel__quad', dir === 'LEFT' && 'is-on')} d="M-100 0 L-50 -50 L0 0 L-50 50 Z" />
         <path class="fwheel__inner" d=${`M0 ${-DEAD_ZONE_TILES / 1.5 * 100} L${DEAD_ZONE_TILES / 1.5 * 100} 0 L0 ${DEAD_ZONE_TILES / 1.5 * 100} L${-DEAD_ZONE_TILES / 1.5 * 100} 0 Z`} />
-        ${DIRS.map((d) => html`<${Chevron} key=${d} dir=${d} on=${dir === d} onClick=${onDirectCommit} />`)}
+        ${DIRS.map((d) => html`<${Chevron} key=${d} dir=${d} on=${dir === d} onClick=${onDirectCommit} onCommit=${onDirectCommit} onPreview=${onDirectPreview} />`)}
       </svg>
       <button type="button" class="fwheel__cancel" onPointerDown=${(e) => e.stopPropagation()}
         onClick=${(e) => { e.stopPropagation(); onCancel(); }} aria-label="点击取消">

@@ -846,8 +846,8 @@ export async function createFieldView(host, options = {}) {
    */
   let selFocus = null;          // board { row, col } of the selected piece while the camera is zoomed to it
 
-  function selFocusCamera(row, col) {
-    const R = selFocusRect(row, col, prepXf.toDisp);
+  function selFocusCamera(row, col, rect = null) {
+    const R = rect || selFocusRect(row, col, prepXf.toDisp);
     if (!R) return null;
     const sz = size();
     // horizontally symmetric: the piece must land on the SCREEN centre (面向干员) — the prep kind's
@@ -859,7 +859,7 @@ export async function createFieldView(host, options = {}) {
   }
 
   /** Zoom the camera to a board tile (a selected piece) or, with nulls, back to the camera in use. */
-  function focusTile(row, col) {
+  function focusTile(row, col, rect = null) {
     if (destroyed) return false;
     if (row == null || col == null) {
       if (!selFocus) return false;
@@ -867,9 +867,9 @@ export async function createFieldView(host, options = {}) {
       flyTo(targetCamera(camKind, camOpts));
       return true;
     }
-    const target = selFocusCamera(row, col);
+    const target = selFocusCamera(row, col, rect);
     if (!target) return false;
-    selFocus = { row, col };
+    selFocus = { row, col, rect };
     flyTo(target);
     return true;
   }
@@ -1959,7 +1959,7 @@ export async function createFieldView(host, options = {}) {
     board3d?.resize(sz.width, sz.height, boardDpr());
     layoutBackdrop();
     // a selection's zoom survives a resize, re-fitted to the new viewport
-    const target = selFocus ? selFocusCamera(selFocus.row, selFocus.col) : targetCamera(camKind, camOpts);
+    const target = selFocus ? selFocusCamera(selFocus.row, selFocus.col, selFocus.rect) : targetCamera(camKind, camOpts);
     if (camTo) camTo = target; else cam = target;
     tiles.project(cam, true);
   }

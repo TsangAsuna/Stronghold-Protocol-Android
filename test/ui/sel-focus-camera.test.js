@@ -98,7 +98,7 @@ describe('wiring', () => {
     assert.match(app, /maxTilePx: SEL_FOCUS_TILE_PX/);
     assert.match(app, /selFocusRect\(row, col, prepXf\.toDisp\)/, 'the rect goes through the prep field\'s display transform');
     assert.match(app, /function setCamera\(kind, options\) \{\n {4}if \(destroyed\) return false;\n {4}selFocus = null;/, 'any camera request supersedes the zoom');
-    assert.match(app, /const target = selFocus \? selFocusCamera\(selFocus\.row, selFocus\.col\) : targetCamera\(camKind, camOpts\);/, 'a resize re-fits the zoom');
+    assert.match(app, /const target = selFocus \? selFocusCamera\(selFocus\.row, selFocus\.col, selFocus\.rect\) : targetCamera\(camKind, camOpts\);/, 'a resize re-fits the zoom (with the drag rect when one is pinned)');
     assert.match(app, /\n {4}focusTile,\n/, 'on the view API');
   });
 

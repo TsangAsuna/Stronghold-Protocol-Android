@@ -1556,7 +1556,14 @@ export async function createFieldView(host, options = {}) {
       case 'deploy': {
         gone.delete(e[1]);
         const v = battleView(e[1]);
-        if (v) { v.onDeploy?.(); if (v.info?.kind !== 'device') fx.deploy(v); }
+        // the battle-open burst (the sim deploys the whole prep board) belongs to the landing
+        // sequence: its staggered reveal plays the deploy clip, and a pillar here would draw
+        // vertical light columns over tiles whose operator has not landed yet. Mid-battle
+        // redeploys (after the presentation) keep the drop-in pillar.
+        if (v && renderT0Battle != null && now - renderT0Battle > 5) {
+          v.onDeploy?.();
+          if (v.info?.kind !== 'device') fx.deploy(v);
+        }
         break;
       }
       case 'atk': {

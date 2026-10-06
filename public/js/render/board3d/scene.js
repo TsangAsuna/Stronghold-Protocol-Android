@@ -269,8 +269,7 @@ export class BoardScene {
         nodes.push({ r0, c0, r1, c1, at: total, d });
         total += d;
       }
-      const dots = Array.from({ length: Math.max(2, Math.round(total / 2.2)) }, (_, i) => ({ phase: i / Math.max(2, Math.round(total / 2.2)), sp: 0.35 + Math.random() * 0.1 }));
-      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion, dots });
+      if (total > 0) this.routePaths.push({ nodes, total, motion: r.motion });
     }
   }
 
@@ -291,15 +290,7 @@ export class BoardScene {
       const line = new T.Line(geo, mat);
       line.frustumCulled = false;
       this.root.add(line);
-      const dn = 8; // single bright segment per route
-      const dgeo = new T.BufferGeometry();
-      const dpos = new Float32Array(dn * 3);
-      dgeo.setAttribute('position', new T.BufferAttribute(dpos, 3));
-      const dmat = new T.PointsMaterial({ size: 0.28, color: 0xff5a4a, transparent: true, depthWrite: false, sizeAttenuation: true });
-      const points = new T.Points(dgeo, dmat);
-      points.frustumCulled = false;
-      this.root.add(points);
-      lines.push({ path, line, pos, points, dpos, dn });
+      lines.push({ path, line, pos });
     }
     this.routeSweeps = { t0: this.time, lines };
   }

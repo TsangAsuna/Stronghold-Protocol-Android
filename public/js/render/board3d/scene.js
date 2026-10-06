@@ -630,7 +630,7 @@ export class BoardScene {
             const k = seg.d > 0 ? (dd - seg.at) / seg.d : 0;
             pos[i * 3] = seg.c0 + (seg.c1 - seg.c0) * k;
             pos[i * 3 + 1] = seg.r0 + (seg.r1 - seg.r0) * k;
-            pos[i * 3 + 2] = 9 * (1 - k) + 0.12;
+            pos[i * 3 + 2] = 0.12;
           }
           line.geometry.attributes.position.needsUpdate = true;
         }

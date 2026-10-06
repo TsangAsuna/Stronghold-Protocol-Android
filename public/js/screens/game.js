@@ -846,6 +846,9 @@ function MatchScreen() {
           return;
         }
         await runIntent(intent);
+        // 道具给角色 (user report): ease the camera onto the receiving operator the way a selection does —
+        // a mis-drop onto the wrong character is seen at once (and taken back) instead of discovered later
+        if (entry.piece.kind === 'item' && t.area === 'board') view.focusTile?.(t.row, t.col);
       }),
       // The deploy voice line hangs off the unit actually reaching the board (render/app.js
       // announceDeploy) instead of off the manual drop, so combat auto-deploy, a merge's elite and a

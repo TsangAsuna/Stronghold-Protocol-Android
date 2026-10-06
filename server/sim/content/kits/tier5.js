@@ -870,6 +870,11 @@ const KITS = {
           unit.mem.anchorHome = null;
           if (!h) return;
           if (h.marker && h.marker.alive) battle.retreat(h.marker, { reason: 'expired', permanent: true });
+          // knocked out mid-skill counts as the skill ending (GitHub #199): the card "技能结束时乌尔比安会返回到初始的
+          // 位置" — the pending return survives the death as anchorReturn, and _layBody lays the body on the home tile
+          // (the marker just retreated) instead of the displacement tile, so 不屈 / 阿戈尔复活 / the redeploy timer all
+          // bring him back there
+          if (!unit.alive || !unit.deployed) { unit.mem.anchorReturn = { r: h.r, c: h.c }; return; }
           if (unit.alive && unit.deployed) {
             // ④ 【返回】: a 【移动】 back to his tile "【返回】时将清空技力，但仍可以享受后续由其他效果提供的技力" — the SP is
             // emptied before the deploy effects of the return run (迅捷作战粮, 黄沙罗盘 … still give theirs, so do skillEnd

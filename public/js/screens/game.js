@@ -844,6 +844,36 @@ function MatchScreen() {
         window.addEventListener('pointerup', onUp, { passive: true, capture: true });
         moveOff = () => window.removeEventListener('pointerup', onUp, { capture: true });
       }),
+      // 道具拖动 (user report, Arknights-style): while an item is dragged, the camera eases onto the operator
+      // under the pointer — the receiver is always the piece in focus, so a mis-give is hard to make; the drop
+      // then selects the receiver (equip) or the placed item (bare tile) and the drag-zoom hands over to it
+      view.on('pieceDragStart', (e) => {
+        ptr.dragZoomUid = e?.piece?.kind === 'item' ? null : undefined; itemDragRef.current = ptr.dragZoomUid === null;
+        // 拖动即放大 (user report): picking an item up eases the camera onto the board's operators at
+        // the selection scale, so every possible receiver is big and readable before the pointer even
+        // reaches one; the hover-follow then retargets per operator. The board's empty → nothing.
+        if (ptr.dragZoomUid !== null) return;
+        const L = live.current;
+        let R = null;
+        for (const p of L.placeCtx?.pieces?.values() || []) {
+          if (p.piece?.kind !== 'chess' || p.area !== 'board') continue;
+          R = R ? { r0: Math.min(R.r0, p.row), r1: Math.max(R.r1, p.row), c0: Math.min(R.c0, p.col), c1: Math.max(R.c1, p.col) }
+                : { r0: p.row, r1: p.row, c0: p.col, c1: p.col };
+        }
+        if (R) { R.r0--; R.r1++; R.c0--; R.c1++; view.focusTile?.(Math.round((R.r0 + R.r1) / 2), Math.round((R.c0 + R.c1) / 2), R); }
+      }),
+      view.on('tileHover', (t) => {
+        ptr.tile = t && typeof t === 'object' ? t : null;
+        if (ptr.dragZoomUid === undefined || !t || t.area !== 'board') return;
+        const L = live.current;
+        let occ = null;
+        for (const p of L.placeCtx?.pieces?.values() || []) {
+          if (p.piece?.kind !== 'chess' || p.area !== 'board' || p.row !== t.row || p.col !== t.col) continue;
+          occ = p; break;
+        }
+        const uid = occ ? occ.uid : null;
+        if (uid && uid !== ptr.dragZoomUid) { ptr.dragZoomUid = uid; view.focusTile?.(t.row, t.col); }
+      }),,
       view.on('tileHover', (t) => { ptr.tile = t && typeof t === 'object' ? t : null; }),
       view.on('pieceDrop', async (e) => {
         endDrag();
@@ -860,8 +890,7 @@ function MatchScreen() {
           if (res.code && res.code !== 'ALREADY') refuse(res.reason);
           return;
         }
-        await runIntent(intent);
-      }),
+
       view.on('pieceDragEnd', (e) => {
         // a cancelled drag (no pieceDrop) must not leave the highlights behind; a release on a tile that takes nothing
         // (the drag controller found no legal target there) says why

@@ -12,7 +12,7 @@
 //   give_coin_in_round {round,coin}                    老鲤     income of round `round` = coin (R1/R2 0, R3 15)
 //   prep_start_gain_chess_from_pool_in_round {round}   老鲤     round start of `round`: 1 chess of pool
 //   band_coin_cost_gain_random_char_by_shop_level      绮良     every coin_cnt funds spent → count random chess ≤ shop level
-//   up_shop_next_refresh_must_present_bond_char        佩佩     level-up to a level of lvlist → +1 free refresh (price 0) that prefers <bond>
+//   up_shop_next_refresh_must_present_bond_char        佩佩     level-up to a level of lvlist → the next refresh prefers <bond> (1 special refresh, paid normally — GitHub #200)
 //   gain_bond_char_per_round {round,preround,bond}     哈洛德   rounds round, round+preround, …: a <bond> chess (≤ shop level, else any tier)
 //   first_buy_in_round_char_price_change {price,bond}  休露丝   first <bond> chess of the round costs `price` (bought in the
 //                                                               shop: onBuy — a free pick / grant never uses it up)
@@ -184,12 +184,15 @@ K.band_coin_cost_gain_random_char_by_shop_level = (ps) => ({
   },
 });
 
+// 佩佩's 特殊刷新 (GitHub #200): the level-up grants ONE special refresh — the NEXT refresh re-rolls preferring
+// <bond> — not a free one: it is consumed by the next manual refresh at the normal price (the bb `price: 0` is not a
+// free refresh; the desc grants the preference only, "此次刷新出现的干员优先为<萨尔贡>干员"). A round-start shop roll
+// dispatches no onRefresh (PlayerState.rollShop), so the grant waits for the player's own refresh.
 K.up_shop_next_refresh_must_present_bond_char = (ps) => ({
   onLevelUp(ctx, ev) {
     const p = ps[0];
     if (!list(p.lvlist).map(Number).includes(ev.level)) return;
     ctx.incCounter('band:pepe:special', 1);
-    if (int(p.price, 0) === 0) ctx.grantFreeRefresh(1);
   },
   onRefresh(ctx) {
     if (ctx.counter('band:pepe:special') <= 0) return;

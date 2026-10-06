@@ -829,9 +829,23 @@ function MatchScreen() {
         window.addEventListener('pointerup', onUp, { passive: true, capture: true });
         moveOff = () => window.removeEventListener('pointerup', onUp, { capture: true });
       }),
-      view.on('tileHover', (t) => { ptr.tile = t && typeof t === 'object' ? t : null; }),
+      // 道具拖动 (user report, Arknights-style): while an item is dragged, the camera eases onto the operator
+      // under the pointer — the receiver is always the piece in focus, so a mis-give is hard to make; the drop
+      // then selects the receiver (equip) or the placed item (bare tile) and the drag-zoom hands over to it
+      view.on('pieceDragStart', (e) => { ptr.dragZoomUid = e?.piece?.kind === 'item' ? null : undefined; }),
+      view.on('tileHover', (t) => {
+        ptr.tile = t && typeof t === 'object' ? t : null;
+        if (ptr.dragZoomUid === undefined || !t || t.area !== 'board') return;
+        const L = live.current;
+        let occ = null;
+        for (const p of L.placeCtx?.pieces?.values() || []) {
+          if (p.piece?.kind !== 'chess' || p.area !== 'board' || p.row !== t.row || p.col !== t.col) continue;
+          occ = p; break;
+        }
+        const uid = occ ? occ.uid : null;
+        if (uid && uid !== ptr.dragZoomUid) { ptr.dragZoomUid = uid; view.focusTile?.(t.row, t.col); }
+      }),
       view.on('pieceDrop', async (e) => {
-        console.warn('[drop] uid=' + (e && e.uid) + ' target=' + JSON.stringify(e && e.target));
         endDrag();
         const L = live.current;
         if (!e || !L.editable) { console.warn('[drop] blocked editable=' + L.editable); return; }
@@ -848,10 +862,13 @@ function MatchScreen() {
           return;
         }
         await runIntent(intent);
-        // 道具 (user report): select the placed item — the very same selection camera the operators use
-        // (eased, centred, the same scale), so where it landed / whom it equips is seen at once and a
-        // mis-drop is taken back immediately
-        if (entry.piece.kind === 'item' && t.area === 'board') setSel({ uid: e.uid });
+        // 道具 (user report): the drop selects the receiver (equip) or the placed item (bare tile) —
+        // the selection camera holds the framing the drag-zoom built
+        if (entry.piece.kind === 'item' && t.area === 'board') {
+          if (Number.isInteger(intent.fields?.targetUid)) setSel({ uid: intent.fields.targetUid });
+          else setSel({ uid: e.uid });
+        }
+        ptr.dragZoomUid = undefined;
       }),
       // The deploy voice line hangs off the unit actually reaching the board (render/app.js
       // announceDeploy) instead of off the manual drop, so combat auto-deploy, a merge's elite and a

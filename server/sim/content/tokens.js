@@ -51,8 +51,9 @@
 // left to that kit; kits that pass `opts.kit` to spawnToken replace these token kits entirely.
 // Tacticians (伺夜/缪尔赛思): the player's board 狼群/流形 piece deploys right before its owner so the owner's kit
 // sees its 援军 standing; with the engine's default reinforcement the talent token replaces the generic 援军. Without
-// a board piece the token takes a tactical point: a free walkable tile of the owner's range on an enemy ground path
-// first (`tacticalPoint`), then the one nearest to the owner.
+// a board piece 缪尔赛思's 流形 (the engine's default reinforcement) takes a tactical point: a free walkable tile of
+// the owner's range on an enemy ground path first (`tacticalPoint`), then the one nearest to the owner — 伺夜's 狼群
+// does not (kits/tier3.js, GitHub #202: the pack deploys only through the player's deployment).
 // Placed summons (PRTS 卫戍协议/帮助 §作战阶段; user playtest #6): every board summon piece marks the tile its summon
 // deploys on. The talent ones the owner holds from the start (狼群, 海嗣, 流形, 凯瑟琳's devices) deploy with the
 // board, after the operators. A skill's summon (赫默's 医疗探机, 巫恋's 诅咒娃娃: "获得一个…") also deploys once with the
@@ -63,8 +64,8 @@
 // (`releaseSkillSummon`; PRTS "若战场区初始部署有召唤物，若召唤物在战斗期间退场，将在满足条件后立即原地再部署1个"): one
 // in stock at most ("最多可库存1个"), after the token's redeploy time once it left, free [ASSUMED: no DP], never while
 // its owner is off the field — a stocked one deploys as soon as the owner is back. A skill's summon or a device
-// (凯瑟琳) that was not placed never appears (the hidden 待部署区 deploys nothing by itself), nor does 海嗣; only the
-// tacticians' 狼群 / 流形 still come as 援军 on a tactical point (above).
+// (凯瑟琳) that was not placed never appears (the hidden 待部署区 deploys nothing by itself), nor does 海嗣; 缪尔赛思's
+// 流形 still comes as 援军 on a tactical point (above), while 伺夜's 狼群 comes only where the player placed it.
 // Fallbacks (only while the summoner still uses the generic kit — a hand-authored kit takes over): skill summons
 // (赫默/巫恋 through their placed pieces as above; 蜜蜡/风丸/维娜/耀骑士临光/迷迭香 S3 on a tile of their own) spawn at
 // skill start — also under a hand-authored kit when only the SELECTED skill runs the generic spec (a non-default skill

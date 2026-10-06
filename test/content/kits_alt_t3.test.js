@@ -765,22 +765,24 @@ test('3_18 忍冬 S1 小施惩戒: next attack + extra arts and +DP; S2 坠刃�
 test('3_19 伺夜 S1 领袖的呼唤 (ALWAYS): +DP and one more “狼影” (≤ max)', () => {
   for (const id of BOTH('chess_char_3_19_a')) {
     const b = SB(id, 'skchr_vigil_1');
-    const h = makeBattle({ defs: { chess: noGarrison(id) }, timeLimit: 60, flags: { dpPerSec: 0 }, units: [U(id, 'skchr_vigil_1', 10, 3)] });
+    // the pack is the 狼群 piece the player placed (GitHub #202: without it no pack comes)
+    const h = makeBattle({ defs: { chess: noGarrison(id) }, timeLimit: 60, flags: { dpPerSec: 0 },
+      units: [U(id, 'skchr_vigil_1', 10, 3, { uid: 1 }), { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 10, col: 5, uid: 2 }] });
     const u = h.unit(id), p = h.b.getPlayer('p1');
     assert.equal(u.skill.rule, 'SP_FULL');
     h.step();
     const w = u.trait.reinforcement;
-    assert.equal(w.mem.wolves, 2);
+    assert.equal(w.mem.shadows, 2);
     const dp0 = p.dp;
     fill(u);
     h.step();
     assert.equal(u.skill.activations, 1, 'no enemy needed');
     approx(p.dp, dp0 + b.cost);
-    assert.equal(w.mem.wolves, 3);
+    assert.equal(w.mem.shadows, 3);
     assert.equal(w.s.blockCnt, 3);
     fill(u);
     h.step();
-    assert.equal(w.mem.wolves, 3, 'capped');
+    assert.equal(w.mem.shadows, 3, 'capped');
     approx(p.dp, dp0 + 2 * b.cost);
     done(h);
   }
@@ -803,7 +805,7 @@ test('3_19 伺夜 S2 领袖的馈赠: +DP, the pack recovers HP, its next attack
   for (const id of BOTH('chess_char_3_19_a')) {
     const b = SB(id, 'skchr_vigil_2');
     const h = makeBattle({ defs: { enemies: { enemy_d: dummy('enemy_d') }, chess: noGarrison(id) }, timeLimit: 60, hooks: ['damaged', 'attack'], captureNoisy: true, flags: { dpPerSec: 0 },
-      units: [U(id, 'skchr_vigil_2', 10, 3)], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }] });
+      units: [U(id, 'skchr_vigil_2', 10, 3, { uid: 1 }), { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }] });
     const u = h.unit(id), p = h.b.getPlayer('p1');
     h.run(2);
     const w = u.trait.reinforcement, e = h.enemy('enemy_d');
@@ -821,14 +823,14 @@ test('3_19 伺夜 S2 领袖的馈赠: +DP, the pack recovers HP, its next attack
     const dmgOf = (a) => h.hooksOf('damaged').filter((c) => c.source === w && c.dmg?.isAttack && c.dmg.attackId === a);
     const ids = [...new Set(h.hooksOf('damaged').filter((c) => c.source === w && c.dmg?.isAttack).map((c) => c.dmg.attackId))].filter((a) => a > 0).slice(-bites.length);
     const first = dmgOf(ids[0]), second = dmgOf(ids[1]);
-    assert.equal(first.length, w.mem.wolves);
+    assert.equal(first.length, w.mem.shadows);
     for (const c of first) approx(c.amount, w.s.atk * b['vigil_wolf_s_2.atk_scale'], 1e-6, 'empowered bite');
     for (const c of second) approx(c.amount, w.s.atk, 1e-6, 'one attack only');
     done(h);
 
     // kill by the empowered attack ⇒ +cost DP
     const g = makeBattle({ defs: { enemies: { enemy_d: dummy('enemy_d') }, chess: noGarrison(id) }, timeLimit: 60, flags: { dpPerSec: 0 },
-      units: [U(id, 'skchr_vigil_2', 10, 3)], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }] });
+      units: [U(id, 'skchr_vigil_2', 10, 3, { uid: 1 }), { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }], enemies: [{ key: 'enemy_d', pos: [9, 3], time: 0.5 }] });
     const v = g.unit(id), gp = g.b.getPlayer('p1');
     g.run(2);
     g.b.addBuff(v, { key: 'test:disarm', flags: { disarm: true } }); // (his own shots must not take the kill)
@@ -848,7 +850,7 @@ test('3_19 伺夜 精锐 module TAC-Y: ×165 % on pack-blocked enemies; "援军�
   const id = 'chess_char_3_19_b', mod = 'uniequip_003_vigil';
   const tb = ds.getChess(id, { moduleId: mod }).traitBb;
   const h = makeBattle({ defs: { enemies: { enemy_h: dummy('enemy_h', { atk: 400, bat: 1 }) }, chess: noGarrison(id) }, timeLimit: 60, hooks: ['damaged'], captureNoisy: true, flags: { dpPerSec: 0 },
-    units: [{ chessId: id, row: 10, col: 3, moduleId: mod }], enemies: [{ key: 'enemy_h', pos: [9, 3], time: 0.5 }] });
+    units: [{ chessId: id, row: 10, col: 3, moduleId: mod, uid: 1 }, { kind: 'token', tokenId: 'token_10028_vigil_wolf', ownerUid: 1, row: 9, col: 3, uid: 2 }], enemies: [{ key: 'enemy_h', pos: [9, 3], time: 0.5 }] });
   const u = h.unit(id);
   h.run(3);
   const w = u.trait.reinforcement, e = h.enemy('enemy_h');

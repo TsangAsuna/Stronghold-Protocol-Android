@@ -68,7 +68,7 @@ test('#3 突袭: an idle member jumping to an enemy that wades in the pool lands
   }
 });
 
-test('#3 the tactical point of a tactician never lies in the water (伺夜 facing the pool, no 狼群 piece placed)', () => {
+test('#3 the tactical point of a tactician never lies in the water (伺夜 facing the pool; GitHub #202: no pack without a placed piece)', () => {
   // 伺夜 on the fenced tile (11,7) facing LEFT: her range covers the pool (10–12, 6) — the nearest tiles on the enemy
   // path (11,6) — and the road (12,7) / (12,5) / (11,5) behind it
   const h = makeBattle({ stageId: STAGE, units: [{ chessId: VIGIL, row: 11, col: 7, dir: 'LEFT' }] });
@@ -79,9 +79,6 @@ test('#3 the tactical point of a tactician never lies in the water (伺夜 facin
   assert.ok(tp, 'a tactical point exists');
   assert.ok(!isWater(h.b, tp[0], tp[1]), `tactical point ${tp} is not water`);
   h.run(1);
-  const wolf = h.allies().find((u) => u.defId === WOLF && u.alive);
-  assert.ok(wolf, 'the pack came as her 援军');
-  assert.ok(!isWater(h.b, wolf.tileR, wolf.tileC), `the pack stands on ${wolf.tileR},${wolf.tileC}, not in the water`);
-  assert.ok((vigil.baseRangeKeys || []).includes(wolf.tileR * 21 + wolf.tileC), 'inside her attack range');
+  assert.equal(h.allies().filter((u) => u.defId === WOLF && u.alive).length, 0, 'no pack without a placed 狼群 piece (GitHub #202)');
   checkInvariants(h.b);
 });

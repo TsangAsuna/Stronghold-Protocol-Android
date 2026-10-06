@@ -102,11 +102,12 @@ test('localOrder / localBefore: the facing-RIGHT frame tie-break equals the tile
 test('战术家 援军 (伺夜): the tactical point is the tile in FRONT along the direction (not the one beside it)', () => {
   for (const dir of ['RIGHT', 'UP', 'DOWN', 'LEFT']) {
     const h = makeBattle({ stage: OPEN, rect: RECT, routes: FAR_ROUTE, units: [{ chessId: 'chess_char_3_19_a', row: R0, col: C0, dir, abs: true }], autoFinish: false, timeLimit: 30 });
-    h.run(2);
-    const wolf = h.b.allyUnits.find((u) => u.kind === 'token' && u.alive);
-    assert.ok(wolf, `${dir}: the pack is summoned`);
-    assert.deepEqual([wolf.tileR - R0, wolf.tileC - C0], rotateOffset(0, 1, dir), `${dir}: in front of 伺夜`);
-    assert.equal(wolf.dir, dir, 'the summon takes the owner direction');
+    h.step();
+    // GitHub #202: without a placed 狼群 piece no pack is summoned — the tactical point itself stays facing-invariant
+    assert.equal(h.b.allyUnits.filter((u) => u.kind === 'token' && u.alive).length, 0, `${dir}: no pack without a placed piece`);
+    const vigil = h.b.allyUnits.find((u) => u.defId === 'chess_char_3_19_a');
+    const tile = h.b.findTacticalPoint(vigil);
+    assert.deepEqual([tile[0] - R0, tile[1] - C0], rotateOffset(0, 1, dir), `${dir}: the tactical point is in front of 伺夜`);
   }
 });
 

@@ -1421,7 +1421,8 @@ const KITS = {
   // ---- 3_19 伺夜 · 战术家 — the tactical reinforcement is the wolf pack (狼群领袖: 2 wolves, +1 every 25 s up to 3, each
   //      wolf = +1 block and one more bite, a wolf is lost instead of the pack dying); 狼群天性: DEF ignore vs pack-blocked
   //      enemies; S3 领袖的尊严: DP over time, 三连击, bonus arts vs pack-blocked enemies; 精锐 module: pack takes less
-  //      damage from the enemies it blocks (token module talent). A 狼群 piece placed in the prep phase is the pack.
+  //      damage from the enemies it blocks (token module talent). A 狼群 piece placed in the prep phase is the pack;
+  //      without it no pack comes at all (GitHub #202: the pack deploys only through the player's deployment).
   //      S1 领袖的呼唤 (ALWAYS): +cost DP and one more “狼影” (≤ the talent's maximum); S2 领袖的馈赠: +cost DP, the pack
   //      recovers hp_ratio of its max HP and its next attack hits ×atk_scale — a kill by that attack gives +cost DP.
   //      精锐 module TAC-Y: trait ×165 % (profession layer) and "援军阻挡的敌人更容易受到我方的攻击": the pack's token module
@@ -1550,6 +1551,10 @@ const KITS = {
         // The pack is the tactician's 援军. The match also hands the player the 狼群 token to place in the prep phase
         // (= choosing the tactical point): that board piece (tokens.js kit, owner-coupled effects left to this kit) is
         // the pack when present — deployed early on its own tile if 伺夜 deploys first — never a second pack.
+        // GitHub #202: with no placed piece no pack comes at all — the pack deploys only through the player's
+        // deployment (nothing auto-deploys at the battle start, so a 联防 phase sees no pack re-deploy at a fresh,
+        // possibly different tactical point either). The tactical point below only brings the pack back when it left
+        // for good (its tactician was knocked out): it prefers the placed piece's tile, so the position stays.
         const spawn = () => {
           if (!alive(unit) || wolfOf(unit)) return;
           const pieces = tokensOf(battle, unit, wolfId);
@@ -1562,7 +1567,8 @@ const KITS = {
             return;
           }
           const board = pieces.find((t) => t.uid != null);
-          const tile = tacticalPoint(battle, unit, board ? [board.homeR, board.homeC] : null);
+          if (!board) return;
+          const tile = tacticalPoint(battle, unit, [board.homeR, board.homeC]);
           if (!tile) return;
           const w = battle.spawnToken(unit, wolfId, tile[0], tile[1], { kit: wolfKit(unit) });
           unit.trait.reinforcement = w;

@@ -31,9 +31,11 @@ jobs:
 
       - name: Download game assets (~280 MB, resumable mirrors)
         run: |
-          # 上游索引偶尔丢文件会触发清单缩水保护（exit 1）：重试一次，
-          # 最后用 --allow-shrink 兜底（缺失图标由客户端回退样式接管）
-          npm run assets || (sleep 10 && npm run assets) || node tools/fetch-assets.mjs --allow-shrink
+          # 上游索引偶尔丢文件会触发清单缩水保护（exit 1）：重试一次即可。
+          # 缩水保护退出时文件已下载、data/assets.json 保持完整（不裁剪）——缺失图标
+          # 由客户端回退样式接管。禁止 --allow-shrink：它会裁掉合并带入的皮肤/语音注册，
+          # 导致后面的 sync-voices-manifest 校验失败。
+          npm run assets || (sleep 10 && npm run assets) || echo "upstream index flaky: files fetched, manifest kept"
 
       - name: Download skins + bilingual voices (~370 MB, 0.1.6 content)
         run: |
@@ -44,7 +46,7 @@ jobs:
           node tools/fetch-skin-avatars.mjs || (sleep 10 && node tools/fetch-skin-avatars.mjs)
           node tools/fetch-bilingual-voices.mjs || (sleep 10 && node tools/fetch-bilingual-voices.mjs)
           node tools/inject-skins-assets.mjs
-          node tools/sync-voices-manifest.mjs
+          node tools/sync-voices-manifest.mjs --write
 
       - name: Pack nodejs-project for the Android shell
         run: node scripts/pack-android.mjs

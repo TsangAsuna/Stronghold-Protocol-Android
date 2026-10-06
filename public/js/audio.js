@@ -506,7 +506,7 @@ export class AudioManager {
     try {
       const AC = this.win?.AudioContext || this.win?.webkitAudioContext;
       if (!AC) return;
-      this.ctx = new AC();
+      this.ctx = new AC({ latencyHint: 'interactive' });
       this.master = this.ctx.createGain();
       this.bgmGain = this.ctx.createGain();
       this.sfxGain = this.ctx.createGain();
@@ -639,7 +639,7 @@ export class AudioManager {
   }
 
   /** Fetch + decode (cached, LRU). Resolves null on failure. */
-  _buffer(url) {
+  _buffer(url, opts = {}) {
     if (!this.ctx || typeof url !== 'string' || !url) return Promise.resolve(null);
     const hit = this.buffers.get(url);
     if (hit) {
@@ -647,15 +647,17 @@ export class AudioManager {
       this.buffers.set(url, hit);
       return hit;
     }
+    // decode-ahead fetches carry a `warm` marker so instrumentation can tell them from plays
+    const warmInit = opts.warm ? { warm: true } : undefined;
     const p = (async () => {
       try {
         // Extension-less URL first so download managers leave the BGM alone; a host without /media/ still works.
         const media = mediaUrl(url);
-        let res = await fetch(media);
+        let res = await fetch(media, warmInit);
         if (media !== url && !isAudioResponse(res)) {
           // Drop the unusable response (404, or a 200 that is really index.html) before trying the original URL.
           try { await res.body?.cancel?.(); } catch { /* the fallback request matters more than draining this one */ }
-          res = await fetch(url);
+          res = await fetch(url, warmInit);
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const ab = await res.arrayBuffer();
@@ -703,7 +705,7 @@ export class AudioManager {
   /** Preload a list of URLs (e.g. UI SFX) once unlocked. */
   preload(urls) {
     if (!this.ctx) return;
-    for (const u of Array.isArray(urls) ? urls : []) this._buffer(u);
+    for (const u of Array.isArray(urls) ? urls : []) this._buffer(u, { warm: true });
   }
 
   // ---- BGM ------------------------------------------------------------------------------------------------
@@ -1006,14 +1008,48 @@ export class AudioManager {
     this.startVoiceDone = false;
     try { this.voiceGate.reset(); this._stopVoice(); } catch { /* ignore */ }
     for (const u of Array.isArray(units) ? units : []) this._track(u);
+    // the generic battle banks are heard from the first hit on — decode them with the field, not on it
+    const b = this.getManifest()?.audio?.sfx?.battle ?? {};
+    this._warmQueue([b.deploy, b.charDie, b.enemyDie, b.enemyDieHeavy, b.tokenDie, b.tokenDeploy].filter((u) => typeof u === 'string'));
   }
 
   _track(u) {
     if (!u || typeof u !== 'object' || u.id == null) return;
     // UnitInfo.spine is the model id (charId / tokenId / enemyId) — the key of sfx.units; kind/defId pick the
     // official class sounds (operator vs summon vs device)
-    this.units.set(u.id, { def: u.spine || u.defId, defId: u.defId ?? null, kind: u.kind ?? null, side: u.side, boss: !!u.boss,
-      skillIndex: Number.isInteger(u.skillIndex) ? u.skillIndex : null });
+    const rec = { def: u.spine || u.defId, defId: u.defId ?? null, kind: u.kind ?? null, side: u.side, boss: !!u.boss,
+      skillIndex: Number.isInteger(u.skillIndex) ? u.skillIndex : null };
+    this.units.set(u.id, rec);
+    this._warmUnit(rec);
+  }
+
+  /**
+   * Decode-ahead a unit's combat SFX: a first-play fetch + decodeAudioData in the middle of a fight
+   * delays that sound by hundreds of ms (the death visual plays at once, the buffer is not decoded
+   * yet — the reported "阵亡音效慢半拍"). Queue the unit's own die / born / attack / hit files when
+   * the unit joins the field so the first real event finds them decoded (the LRU keeps them).
+   */
+  _warmUnit(u) {
+    if (!this.ctx) return;
+    const m = this.getManifest();
+    const own = m?.audio?.sfx?.units?.[u?.def];
+    this._warmQueue([deathSfxUrl(m, u), deploySfxUrl(m, u), own?.attack, own?.hit].filter((x) => typeof x === 'string'));
+  }
+
+  /** Serial decode queue: one decodeAudioData at a time, behind everything the battle is playing. */
+  _warmQueue(urls) {
+    if (!this.ctx || !urls?.length) return;
+    this._warmPending = this._warmPending || [];
+    for (const u of urls) if (!this._warmPending.includes(u) && !this.buffers.has(u)) this._warmPending.push(u);
+    if (this._warming) return;
+    this._warming = true;
+    const step = () => {
+      const url = this._warmPending?.shift();
+      if (!url) { this._warming = false; return; }
+      if (this.buffers.has(url)) { step(); return; }
+      this._buffer(url, { warm: true }).then(step, step);
+    };
+    step();
   }
 
   /** Play a resolved battle sound for a unit event, limited like unit sounds. */

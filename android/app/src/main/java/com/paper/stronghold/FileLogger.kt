@@ -1,6 +1,7 @@
 package com.paper.stronghold
 
 import android.content.Context
+import io.github.sganggs.stronghold.BuildConfig
 import android.content.Intent
 import android.os.Build
 import android.util.Log

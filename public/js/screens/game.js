@@ -831,11 +831,13 @@ function MatchScreen() {
       }),
       view.on('tileHover', (t) => { ptr.tile = t && typeof t === 'object' ? t : null; }),
       view.on('pieceDrop', async (e) => {
+        console.warn('[drop] uid=' + (e && e.uid) + ' target=' + JSON.stringify(e && e.target));
         endDrag();
         const L = live.current;
-        if (!e || !L.editable) return;
+        if (!e || !L.editable) { console.warn('[drop] blocked editable=' + L.editable); return; }
         const entry = L.placeCtx?.pieces.get(e.uid);
-        if (!entry) return;
+        if (!entry) { console.warn('[drop] no entry'); return; }
+        console.warn('[drop] kind=' + entry.piece.kind);
         const t = e.target || {};
         if (t.area === 'outside') return; // no drag-to-sell (research 09 §5): the piece goes back
         const res = canPlace(L.placeCtx, e.uid, t);
@@ -846,11 +848,10 @@ function MatchScreen() {
           return;
         }
         await runIntent(intent);
-        // 道具给角色 (user report): select the receiving operator — the selection camera eases onto them
-        // and their underframe opens, so a mis-drop onto the wrong character is seen at once (and undone)
-        if (entry.piece.kind === 'item' && t.area === 'board' && Number.isInteger(intent.fields?.targetUid)) {
-          setSel({ uid: intent.fields.targetUid });
-        }
+        // 道具 (user report): select the placed item — the very same selection camera the operators use
+        // (eased, centred, the same scale), so where it landed / whom it equips is seen at once and a
+        // mis-drop is taken back immediately
+        if (entry.piece.kind === 'item' && t.area === 'board') setSel({ uid: e.uid });
       }),
       // The deploy voice line hangs off the unit actually reaching the board (render/app.js
       // announceDeploy) instead of off the manual drop, so combat auto-deploy, a merge's elite and a

@@ -281,6 +281,12 @@ export const C2S = {
   // the strategy highlighted in the draft screen (user playtest #4 item 4): a turn that runs out takes it while it is
   // free (Match.timeoutBand); absent / null clears it
   'g.bandFocus': { bandId: nullable(isId), $optional: ['bandId'] },
+  // the strategy draft's pre-claims (预定, GitHub issue #247): a deliberate communication for voiceless teams. kind
+  // 'strategy' claims a strategy (plan to play it), 'bond' a bond icon; a null / absent id clears that kind's claim.
+  // Any seated player without a pick may claim — also before its turn, and any number may claim the same strategy.
+  // Published to the room in m.public.draft.claims ({ [playerId]: { strategy: id|null, bond: id|null } }, pre-claims
+  // only — a confirmed pick keeps its checkmark); cleared by that player's pick, the end of the draft, or leaving.
+  'g.draftClaim': { kind: (v) => v === 'strategy' || v === 'bond', id: nullable(isId), $optional: ['id'] },
   'g.buy': { slot: (v) => isInt(v, 0, 15) },
   'g.refresh': {},
   'g.freeze': {},

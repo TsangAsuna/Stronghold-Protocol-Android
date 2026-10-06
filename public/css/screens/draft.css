@@ -1,7 +1,9 @@
 /* ==========================================================================================
    screens/draft.css — BAND_DRAFT strategy pick (js/screens/bandDraft.js). Research 06 §4.2:
    draft order on the left, portrait grid, detail pane with 初始生命值 and 确认选择 / 跳过; the 本局信息 entry under
-   the order list and its dialog (js/ui/matchInfo.js MatchInfoDialog, GitHub issue #8 item 1).
+   the order list and its dialog (js/ui/matchInfo.js MatchInfoDialog, GitHub issue #8 item 1); the draft's pre-claims
+   (预定策略 / 预定盟约, GitHub issue #247): corner bubbles on the order's avatars and the cards, the confirmed pick's
+   mask overlay, and the bond picker dialog.
    ========================================================================================== */
 
 .draft__main { position: relative; z-index: 1; flex: 1; min-height: 0; display: grid; grid-template-columns: 3.9rem 1fr 5rem; gap: .3rem; padding: .3rem .42rem .36rem; }
@@ -84,6 +86,34 @@
   font-size: max(.14rem, 9px); line-height: 1.5; color: var(--text-lo); background: rgba(255, 255, 255, .03); border-left: 2px solid rgba(255, 255, 255, .28); }
 .draft-detail__off .icon { width: max(.16rem, 10px); height: max(.16rem, 10px); flex: none; margin-top: .02rem; }
 .draft-detail__offname { color: var(--text-dim); text-decoration: line-through; text-decoration-color: rgba(255, 84, 84, .6); }
+
+/* ---- 预定 (GitHub issue #247): pre-claims for voiceless teams -----------------------------------------
+   预定策略 / 预定盟约 under the 本局信息 entry; the decision-order avatar's corner bubbles (the strategy the player
+   plans to play — no checkmark — and the bond it plans to build, side by side); the strategy card's claimer avatars;
+   the confirmed pick's mask overlay (嵌套蒙版) on the card's strategy avatar, distinct from a pre-claim's bubbles. */
+.draft-order__claims { display: flex; gap: .06rem; }
+.draft-order__claims .btn { flex: 1; padding: 0 .06rem; height: max(.44rem, 26px); font-size: max(.15rem, 9px); }
+.dorder__ava { position: relative; display: inline-grid; }
+.dorder__claims { position: absolute; right: -.09rem; top: -.09rem; display: flex; gap: .03rem; pointer-events: none; z-index: 1; }
+.dorder__claims .bandicon { --bi: max(.3rem, 15px); border: 1px solid var(--gold); border-radius: 50%; overflow: hidden; background: #111513; }
+.dorder__claims .bglyph { width: max(.3rem, 15px); height: max(.3rem, 15px); border: 1px solid var(--gold); border-radius: 50%; overflow: hidden; background: #111513; }
+.dband__iconwrap { position: relative; display: inline-grid; }
+.dband__mask { position: absolute; inset: 0; background: rgba(6, 9, 8, .55); pointer-events: none; }
+.dband.is-taken .dband__mask { background: rgba(6, 9, 8, .35); }
+.dband__claims { position: absolute; left: .04rem; top: .04rem; display: flex; flex-direction: row; gap: .03rem; }
+.dband__claims .pavatar { --pa: .3rem; border-radius: 50%; overflow: hidden; border: 2px solid var(--gold); }
+.draft-grid.is-claiming .dband:not(.is-taken) { cursor: crosshair; border-color: rgba(255, 198, 0, .5); }
+.draft-grid.is-claiming .dband:not(.is-taken):hover { border-color: var(--gold); }
+.draft-detail__status--claim { color: var(--gold); }
+.claim-bonds__tip { margin: 0 0 max(.12rem, 6px); font-size: max(.14rem, 9px); line-height: 1.6; color: var(--text-lo); }
+.claim-bonds { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(1.04rem, 52px), 1fr)); gap: max(.1rem, 4px); max-height: min(48vh, 4.2rem); overflow: auto; padding: 2px; }
+.claim-bond { display: flex; flex-direction: column; align-items: center; gap: .04rem; padding: max(.08rem, 4px) max(.04rem, 2px); background: rgba(12, 15, 14, .82); border: 1px solid var(--line); color: var(--text-md); }
+.claim-bond:hover { border-color: var(--line-3); }
+.claim-bond.is-mine { border-color: var(--gold); box-shadow: 0 0 .14rem rgba(255, 198, 0, .2); }
+.claim-bond .bglyph { width: max(.5rem, 25px); height: max(.5rem, 25px); }
+.claim-bond__name { font-size: max(.13rem, 8px); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.claim-bonds__clear { margin-top: max(.12rem, 6px); display: flex; justify-content: center; }
+
 
 /* ---- 本局信息 (GitHub issue #8 item 1, DESIGN §21.28): the entry under the order list and the read-only dialog -------
    The dialog shows the briefing's own blocks (.brief-bonds / .brief-legend / .brief-banned, css/screens/briefing.css)

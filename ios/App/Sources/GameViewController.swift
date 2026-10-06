@@ -166,12 +166,7 @@ final class GameViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        applyEdgePadding()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // re-apply after rotation / initial layout so the inset stays correct
+        // re-applied on every layout pass (rotation / initial layout included) so the inset stays correct
         applyEdgePadding()
     }
 

@@ -1709,12 +1709,12 @@ export async function createFieldView(host, options = {}) {
         landingPlan = null;
         if (performance.now() - plan.at < 8000) {
           // 官方演出：先全部收起，再按顺序逐个落地（部署片段 + 落地光效）
-          const hide = (vv, on) => {
-            if (vv.actor?.view) vv.actor.view.visible = !on;
-            else if (vv.actor?.container) vv.actor.container.visible = !on;
-            else if (vv.view) vv.view.visible = !on;
-          };
-          allies.forEach((vv) => { hide(vv, true); vv._landingHold = performance.now() + 400 + allies.length * 220; });
+          const hide = (vv, on) => { if (vv.root) vv.root.visible = !on; }; // UnitView.root is the Pixi container
+          allies.forEach((vv) => {
+          hide(vv, true);
+          // keep the sim-sync from recreating/overriding the hidden view during the vanish window
+          vv._landingHold = performance.now() + 400 + allies.length * 220;
+        });
           allies.forEach((vv, i) => {
             setTimeout(() => {
               if (!vv.alive || vv.down) { hide(vv, false); return; }

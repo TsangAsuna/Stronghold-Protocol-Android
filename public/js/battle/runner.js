@@ -77,7 +77,8 @@ const TICK = 1 / 30;
  * Match._launch shifts a server-run field's startAt by the same formula.
  */
 export function openPresentationMs(spec) {
-  if (process.env?.SP_PRESENT_MS != null) return Number(process.env.SP_PRESENT_MS) || 0; // tests / headless
+  // tests / headless override (typeof guard: the browser has no `process`)
+  if (typeof process !== 'undefined' && process.env?.SP_PRESENT_MS != null) return Number(process.env.SP_PRESENT_MS) || 0;
   const n = (spec?.players || []).reduce((s, p) => s + (Array.isArray(p?.units) ? p.units.length : 0), 0);
   return 2800 + Math.min(20, n) * 220;
 }

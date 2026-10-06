@@ -1033,6 +1033,26 @@ function MatchScreen() {
     showRange(view, previewGrid(lookups, selEntry.piece), selEntry.row, selEntry.col, pieceDir(selEntry.piece), SEL_RANGE);
     return () => showRange(view, null, 0, 0, null, SEL_RANGE);
   }, [view, selRangeKey]);
+  // the selected piece's camera (official behaviour): the framing eases onto the piece's tile so the retreat /
+  // direction actions are reachable on a crowded board, and back to the camera in use on deselect (app.js
+  // focusTile — a detour that never touches the shop camera or the 联防 half framings; a fold / unfold of the
+  // shop bar re-frames and the zoom re-asserts). Own prep board only and board pieces only: the bench keeps the
+  // shop camera that already frames it. The ref keeps a re-render from flying back and forth.
+  const selFocusRef = useRef(null);                      // { uid, row, col } the camera is zoomed to
+  useEffect(() => {
+    if (!view) return undefined;
+    const prev = selFocusRef.current;
+    const t = editable && showPrep && selEntry && selEntry.area === 'board'
+      ? { uid: selEntry.piece.uid, row: selEntry.row, col: selEntry.col } : null;
+    if (prev && (!t || prev.uid !== t.uid || prev.row !== t.row || prev.col !== t.col)) {
+      selFocusRef.current = null;
+      view.focusTile?.(null);                            // deselect / another piece: the camera in use again
+    }
+    if (!t) return undefined;
+    selFocusRef.current = t;
+    view.focusTile?.(t.row, t.col);
+    return undefined;
+  }, [view, selEntry, editable, showPrep, shopFolded]);
   // the selected piece's underframe on screen: the detail card docks on the side away from it (user playtest #2
   // item 8 — at some aspect ratios a bench unit's 出售 sat under the left card); the underframe is drawn above every
   // panel anyway (css z-index), this keeps it visible too

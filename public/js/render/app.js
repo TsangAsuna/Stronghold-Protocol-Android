@@ -108,7 +108,8 @@
 
 import { GEO, ANIM, UF } from '../../../shared/constants.js';
 import { fxForm } from '../../../shared/protocol.js';
-import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
+import { Camera, fitCamera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
+import { selFocusRect, SEL_FOCUS_TILE_PX } from '../ui/gameLogic.js';
 import { SnapshotBuffer, frameTime } from './interp.js';
 import { TileField } from './tiles.js';
 import { UnitView, ItemView, DeviceView, FORMS } from './units.js';
@@ -730,8 +731,52 @@ export async function createFieldView(host, options = {}) {
 
   // rows drawn per camera kind: module `bandFor`; the active field rows: module `fieldRows`
 
+  let selFocus = null;          // the selected piece's camera detour: { row, col, rect } while the zoom is on
+
+  /** Ease to `target` over CAMERA_MS — the flight the camera requests and the selection zoom share. */
+  function flyTo(target) {
+    camFrom = cam.clone();
+    camTo = target;
+    camT0 = performance.now();
+    camMs = CAMERA_MS;
+  }
+
+  /** The camera a selected piece's tile frames (gameLogic selFocusRect through the prep field's display
+   *  transform, fitted with symmetric side padding so the piece sits on the screen centre, capped at
+   *  SEL_FOCUS_TILE_PX); `rect` overrides the derived rect (the item drag frames the board's operators). */
+  function selFocusCamera(row, col, rect = null) {
+    const R = rect || selFocusRect(row, col, prepXf.toDisp);
+    if (!R) return null;
+    const sz = size();
+    const pad = defaultPadding('prep', sz);
+    const side = Math.max(sz.width * 0.06, 24);
+    return fitCamera(R, { width: sz.width, height: sz.height, padding: { top: pad.top, bottom: pad.bottom, left: side, right: side } },
+      { margin: 0.5, headroom: 1.6, maxTilePx: SEL_FOCUS_TILE_PX });
+  }
+
+  /**
+   * The selected piece's camera detour (screens/game.js selection): the framing eases onto the piece's tile and
+   * back to the camera in use on deselect. Deliberately NOT a setCamera request — camKind / camOpts stay untouched,
+   * and any explicit camera request supersedes the detour. `rect` = an explicit framing (the item drag).
+   */
+  function focusTile(row, col, rect = null) {
+    if (destroyed) return false;
+    if (row == null || col == null) {
+      if (!selFocus) return false;
+      selFocus = null;
+      flyTo(targetCamera(camKind, camOpts));
+      return true;
+    }
+    const target = selFocusCamera(row, col, rect);
+    if (!target) return false;
+    selFocus = { row, col, rect };
+    flyTo(target);
+    return true;
+  }
+
   function setCamera(kind, options) {
     if (destroyed) return false;
+    selFocus = null;                       // an explicit camera request supersedes a selection's zoom
     let o = options && typeof options === 'object' ? options : {};
     const prevView = viewKind(camKind, camOpts);
     const prevBand = bandFor(prevView), prevField = fieldRows(prevView);
@@ -1850,7 +1895,7 @@ export async function createFieldView(host, options = {}) {
     app.renderer.resize(sz.width, sz.height);
     board3d?.resize(sz.width, sz.height, boardDpr());
     layoutBackdrop();
-    const target = targetCamera(camKind, camOpts);
+    const target = selFocus ? selFocusCamera(selFocus.row, selFocus.col, selFocus.rect) : targetCamera(camKind, camOpts);
     if (camTo) camTo = target; else cam = target;
     tiles.project(cam, true);
   }
@@ -1893,6 +1938,7 @@ export async function createFieldView(host, options = {}) {
   const view = {
     setStage,
     setCamera,
+    focusTile,
     setPrep,
     /** Enemy preview pen: a list in m.private.nextEnemies shape, or null to empty it (setPrep does this itself). */
     setPen(list) { if (destroyed) return false; setPenList(Array.isArray(list) ? list : null); return true; },

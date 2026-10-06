@@ -1455,6 +1455,12 @@ export async function createFieldView(host, options = {}) {
     // the round's real batch routes (m.field meta.routes, Battle.fieldMeta): the official 红门→蓝门
     // current — armed here, swept once on the first settled frame (render/tiles.js + board3d/scene.js)
     routeSweepArmed = !meta.prep && Array.isArray(meta.routes) && meta.routes.length > 0;
+    // official re-deploy moment: after 准备就绪 the operators land one by one — the plan is armed here
+    // and consumed on the first battle frame that has the ally views (the server sends the field meta
+    // before the sim has deployed the prep board, so meta.units is empty on a fresh field)
+    landingPlan = null;
+    landingFired = false;
+    if (meta.prep !== true) landingPlan = { at: performance.now() };
     try {
       tiles.buildRoutes(meta.routes);
       board3d?.buildRoutes(meta.routes);
@@ -1575,7 +1581,16 @@ export async function createFieldView(host, options = {}) {
       case 'deploy': {
         gone.delete(e[1]);
         const v = battleView(e[1]);
-        if (v) { v.onDeploy?.(); if (v.info?.kind !== 'device') fx.deploy(v); }
+        // the sim flags the battle-open board setup with { initial: true }: those operators belong to
+        // the landing sequence (its staggered reveal plays the clip and announces per operator) — a
+        // pillar + announce here would fire while the operator is still hidden. Mid-battle redeploys
+        // keep the announce + the drop-in pillar.
+        const isInitial = !!(e[2]?.initial || (typeof e[2] === 'object' && e[2]?.initial));
+        if (v) {
+          v.onDeploy?.();
+          if (!isInitial) announceDeploy(v, e);
+          if (v.info?.kind !== 'device' && !isInitial) fx.deploy(v);
+        }
         break;
       }
       case 'atk': {
@@ -1674,11 +1689,50 @@ export async function createFieldView(host, options = {}) {
   }
 
   let renderT0Battle = null;   // game time of the first rendered battle frame (spawn puffs skip the initial wave)
-  let routeSweepArmed = false; // the one-shot route current: armed at enterBattle, fired on the first settled frame
+  let landingPlan = null;      // own units to land one-by-one at battle open (official re-deploy moment)
+  let landingFired = false;
+  let routeSweepArmed = false; // the one-shot route current: armed at enterBattle, fired after the landing
   let downSeq = 0;             // syncBattle pass counter: a view still marked down after a pass left the `down` list
   function syncBattle(renderT) {
     if (renderT0Battle == null) renderT0Battle = renderT;
-    if (routeSweepArmed && renderT - renderT0Battle > 0.2) {
+    // the landing sequence (see enterBattle): first frame settled → hide all, then play each deploy
+    // clip one by one; the route current sweeps once after the last operator lands
+    if (landingPlan && !landingFired) {
+      const all = [...views.values()];
+      const allies = all.filter((vv) => vv.alive && !vv.down && vv.onDeploy);
+      if (allies.length > 0) {
+        landingFired = true;
+        const plan = landingPlan;
+        landingPlan = null;
+        if (performance.now() - plan.at < 8000) {
+          const hide = (vv, on) => { if (vv.root) vv.root.visible = !on; };
+          allies.forEach((vv) => {
+            hide(vv, true);
+            vv._landingHold = performance.now() + 400 + allies.length * 220; // the snapshot cannot cut the clip
+          });
+          allies.forEach((vv, i) => {
+            setTimeout(() => {
+              if (!vv.alive || vv.down) { hide(vv, false); return; }
+              hide(vv, false);
+              vv.fadeIn = 0;
+              vv.onDeploy?.();
+              announceDeploy(vv);           // the deploy SFX + voice line follow each landing
+              setTimeout(() => { if (vv.hud) vv.hud.visible = true; }, 650); // bars after the landing
+            }, 300 + i * 220);
+          });
+          setTimeout(() => {
+            if (routeSweepArmed) {
+              routeSweepArmed = false;
+              try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+            }
+          }, 300 + allies.length * 220 + 200);
+        } else if (routeSweepArmed) {
+          routeSweepArmed = false;
+          try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
+        }
+      }
+    }
+    if (routeSweepArmed && renderT - renderT0Battle > 6) { // a plan that never armed (empty board): sweep anyway
       routeSweepArmed = false;
       try { tiles.playRouteSweeps(); board3d?.playRouteSweeps(); } catch (e) { console.warn('route sweep failed', e); }
     }
@@ -1692,6 +1746,7 @@ export async function createFieldView(host, options = {}) {
       if (!v) v = battleView(id) || createUnknown(id, s);
       if (!v) continue;
       if (!v._seen) { v._seen = true; v.fadeIn = 0; }
+      if (v._landingHold > performance.now()) continue; // the battle-open deploy clip plays undisturbed
       if (v.alive || v.info?.kind === 'device') v.sync(s, renderT);
       else if (v.dying > 0) { v.x = s.x; v.y = s.y; }
       else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, renderT); }

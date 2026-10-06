@@ -5,7 +5,7 @@
 // leak count of normal fields (state().leaks, user playtest #3 item 2).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createBattleRunner, ticksPerFrameCap } from '../../public/js/battle/runner.js';
+import { createBattleRunner, ticksPerFrameCap, openPresentationMs } from '../../public/js/battle/runner.js';
 import { createStore, initialState } from '../../public/js/store.js';
 import * as specMod from '../../server/sim/spec.js';
 import { DataSource } from '../../server/sim/simdata.js';
@@ -13,6 +13,32 @@ import { validateC2S } from '../../shared/protocol.js';
 import { validateClientResult, runHeadless } from '../../server/match/fields.js';
 import { PHASE } from '../../shared/constants.js';
 import { DATA, makeMatch } from './harness.js';
+
+process.env.SP_PRESENT_MS = '0'; // the pacing tests below drive a manual clock second by second; the presentation hold has its own test
+
+test('battle-open presentation: ticks wait out openPresentationMs(spec) — the board deploys at construction, enemies wait', async () => {
+  const prev = process.env.SP_PRESENT_MS;
+  delete process.env.SP_PRESENT_MS;
+  try {
+    const start = realStart();
+    const r = rig();
+    r.net.emit('b.start', start);
+    await r.settle();
+    const e = r.runner._entries.get(start.battleId);
+    assert.ok(e && e.battle.started, 'battle.start ran at construction — the board is on the field for the first frame');
+    const hold = openPresentationMs(start.spec);
+    assert.ok(hold >= 2800, `baseline hold (${hold} ms)`);
+    r.advance(1000);
+    assert.equal(e.battle.tickCount, 0, 'no ticks during the presentation');
+    r.advance(hold);
+    assert.ok(e.battle.tickCount > 0, 'ticks resume after the hold');
+    console.error('DBG kinds:', JSON.stringify(r.feed.evs.map((m) => [m.t, m.gt, m.ev.map((x) => x[0]).join(',')])).slice(0, 500), 'held:', e.held.length, 'ticks:', e.battle.tickCount, 'hidden:', r.doc.hidden);
+    assert.ok(r.feed.evs.flatMap((x) => x.ev).some((x) => x[0] === 'spawn' && x[1].side === 'ally'), 'the board spawns at the first tick after the hold');
+    if (!r.feed.evs.flatMap((x) => x.ev).some((x) => x[0] === 'spawn')) console.error('DBG kinds:', JSON.stringify(r.feed.evs.map((m) => [m.t, m.gt, m.ev.map((x) => x[0]).join(',')])).slice(0, 400), 'held:', e.held.length, 'ticks:', e.battle.tickCount);
+  } finally {
+    if (prev === undefined) delete process.env.SP_PRESENT_MS; else process.env.SP_PRESENT_MS = prev;
+  }
+});
 
 const DS = new DataSource(DATA, null);
 

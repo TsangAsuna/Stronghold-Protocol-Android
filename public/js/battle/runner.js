@@ -68,6 +68,16 @@ import { unitStatsEntry, fxForm } from '../../../shared/protocol.js';
 import { spectateEffects } from './observe.js';
 
 const TICK = 1 / 30;
+/** How long the battle-open presentation keeps the sim clock from ticking (render/app.js landingPlan):
+ *  the board hides, every operator lands one by one (300 ms lead-in + 220 ms per unit), then the
+ *  round's route current sweeps (~2 s). Scaled by the spec's initial unit count so a full board is
+ *  never overtaken by the presentation. The server's field clock shifts by the same amount
+ *  (server/match/Match.js); SP_PRESENT_MS=0 disables the hold (tests / headless). */
+export function openPresentationMs(spec) {
+  if (typeof process !== 'undefined' && process.env?.SP_PRESENT_MS != null) return Number(process.env.SP_PRESENT_MS) || 0;
+  const n = (spec?.players || []).reduce((s, p) => s + (Array.isArray(p?.units) ? p.units.length : 0), 0);
+  return 2800 + Math.min(20, n) * 220;
+}
 /** Fast-forward budget per frame (ticks) when far behind. */
 export const CATCHUP_TICKS = 240;
 /** Silent catch-up slice (ticks) while a new battle is prepared before it is shown. */
@@ -573,7 +583,18 @@ export function createBattleRunner(deps) {
     emit('field', field);
     try { store.patch('match', { field }); } catch { /* ignore */ }
     publishState();
-    try { e.battle.drainEvents(); } catch { /* the view starts from the meta + this frame */ }
+    // battle.start() at construction emitted the board's spawn/deploy events before anything was
+    // listening: replay them after the field meta (the view builds from the meta, the events give
+    // every unit its model form / audio registration) instead of dropping them
+    // battle.start() at construction emitted the board's spawn/deploy events before anything was
+    // listening: replay them after the field meta (the view builds from the meta, the events give
+    // every unit its model form / audio registration) instead of dropping them. A hidden tab drains
+    // nothing here — the queue survives, and the first frame back delivers it all in game-time order.
+    if (!doc.hidden) {
+      let born = [];
+      try { born = e.battle.drainEvents() || []; } catch { born = []; }
+      if (born.length) emit('ev', { t: 'b.ev', fieldId: e.fieldId, gt: 0, ev: born });
+    }
     emit('snap', frameOf(e));
     schedule();
   }
@@ -632,11 +653,18 @@ export function createBattleRunner(deps) {
       return;
     }
     stats.battles++;
+    // deploy the board right away instead of at the first tick: the field's first frame must already
+    // show the operators (the battle-open presentation hides them and lands them one by one). The sim
+    // clock still starts openPresentationMs(spec) in the future, so ticks — and with them the first
+    // enemy spawn — wait for the presentation.
+    if (!battle.started && typeof battle.start === 'function') battle.start();
     const e = {
       battleId: msg.battleId, fieldId: msg.fieldId || msg.spec.fieldId, kind: msg.kind || msg.spec.kind, spec: msg.spec, sim, battle,
       authoritative: !!msg.authoritative, watch: !!msg.watch, own: !msg.watch, speed,
       members: (msg.spec.players || []).map((p) => p && p.playerId).filter(Boolean),
-      t0: clock() - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
+      // 准备就绪后先逐个落地 + 路线电流（render/app.js landingPlan），模拟时钟按演出总时长延后
+      // 启动——怪在演出之后才出；重连/观战（elapsed > 0）不等待
+      t0: clock() + openPresentationMs(msg.spec) - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
       result: null, delivery: null,
       meter: sim.spec.attachLpMeter(battle),
       // counted leaks so far (normal fields; noteLeaks) and the Battle state they were counted at; 联防 fields: each

@@ -35,6 +35,17 @@ jobs:
           # 最后用 --allow-shrink 兜底（缺失图标由客户端回退样式接管）
           npm run assets || (sleep 10 && npm run assets) || node tools/fetch-assets.mjs --allow-shrink
 
+      - name: Download skins + bilingual voices (~370 MB, 0.1.6 content)
+        run: |
+          # charword table drives the bilingual voice plan (jp/cn battle lines per operator)
+          mkdir -p .cache/gamedata/excel
+          curl -fsSL --retry 3 -o .cache/gamedata/excel/charword_table.json             https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/charword_table.json
+          node tools/fetch-skin-spines.mjs || (sleep 10 && node tools/fetch-skin-spines.mjs)
+          node tools/fetch-skin-avatars.mjs || (sleep 10 && node tools/fetch-skin-avatars.mjs)
+          node tools/fetch-bilingual-voices.mjs || (sleep 10 && node tools/fetch-bilingual-voices.mjs)
+          node tools/inject-skins-assets.mjs
+          node tools/sync-voices-manifest.mjs
+
       - name: Fetch libnode (iOS) and stage nodejs-project
         run: node scripts/pack-ios.mjs
 

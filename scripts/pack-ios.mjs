@@ -113,7 +113,7 @@ function ensureLibnode() {
 
 function copyResources() {
   mkdirSync(RES, { recursive: true });
-  for (const dir of ['server', 'shared', 'data']) {
+  for (const dir of ['server', 'shared', 'data', 'data-en']) {
     cpSync(join(ROOT, dir), join(RES, dir), { recursive: true });
   }
   cpSync(join(ROOT, 'package.json'), join(RES, 'package.json'));

@@ -6,6 +6,10 @@
 export const zh = {
   // ready buttons (hud / briefing / room)
   ready: '准备就绪',
+  'sec.skill': '技能',
+  'sec.talent': '天赋',
+  'sec.effect': '效果',
+  'sec.garrison': '特质',
   readyUp: '准备就绪',
   readyCancel: '取消准备',
   readyDone: '已就绪',

@@ -425,7 +425,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   blocks.garrison = garrison ? html`<${GarrisonBlock} key="garrison" garrison=${garrison} m=${m} />` : null;
   blocks.trait = c.trait?.desc ? html`<p key="trait" class="dtrait"><${Icon} name="info" /><${RichText} text=${traitText(c, golden, lo)} /></p>` : null;
   blocks.stats = chessStatsBlock({ rec: fr, chess: c, live });
-  blocks.skill = sk ? html`<${Section} key="skill" title="技能" micro="SKILL" class="dsec--skill">
+  blocks.skill = sk ? html`<${Section} key="skill" title=${t('sec.skill')} micro="SKILL" class="dsec--skill">
       <div class="dskill" data-skill=${sk.skillId || ''}>
         <${Img} src=${skIcon} class="dskill__icon" fallback=${html`<span class="dskill__icon dskill__icon--empty">${skSlot ? html`<b class="num">${skSlot}</b>` : null}</span>`} />
         <div class="dskill__meta">
@@ -459,7 +459,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
       ${carried.map((id, i) => html`<${ItemRow} key=${`${i}:${id}`} itemId=${id} carried=${carried} off=${offBonds} />`)}
     <//>` : null;
   const talents = chessTalents(fr);
-  blocks.talents = talents.length ? html`<${Section} key="talents" title="天赋" micro="TALENT" class="dsec--talent">
+  blocks.talents = talents.length ? html`<${Section} key="talents" title=${t('sec.talent')} micro="TALENT" class="dsec--talent">
       ${talents.map((t, i) => html`<div key=${i} class="dtalent"><b>${t.name}</b><${RichText} text=${t.descRaw || t.desc} class="dtext" /></div>`)}
     <//>` : null;
   blocks.actions = piece && editable && piece.kind !== 'item' ? html`<div key="actions" class="dactions">
@@ -490,8 +490,8 @@ export function ItemDetail({ item, piece, editable, onDestroy, offBonds = null }
         ${item.flavor ? html`<span class="dhead__flavor">${item.flavor}</span>` : null}
       </div>
     </div>
-    <${Section} title="效果" micro="EFFECT"><${RichText} as="p" text=${item.descRaw || item.desc} class="dtext" /><//>
-    ${item.canGiveBond ? html`<${Section} title="天赋" micro="TALENT" class="dsec--morph"><${MorphPairings} off=${offBonds} /><//>` : null}
+    <${Section} title=${t('sec.effect')} micro="EFFECT"><${RichText} as="p" text=${item.descRaw || item.desc} class="dtext" /><//>
+    ${item.canGiveBond ? html`<${Section} title=${t('sec.talent')} micro="TALENT" class="dsec--morph"><${MorphPairings} off=${offBonds} /><//>` : null}
     ${!item.canGiveBond && item.giveBondId ? html`<${MorphGrantLine} item=${item} off=${offBonds} />` : null}
     ${item.note ? html`<p class="dhint dhint--rule"><${Icon} name="info" />${item.note}</p>` : null}
     ${item.itemType === 'MAGIC'

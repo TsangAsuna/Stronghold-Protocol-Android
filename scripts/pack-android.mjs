@@ -248,7 +248,7 @@ async function main() {
 
   // ---- collect core entries (code + data; never the heavy media) ----
   const coreFiles = [];
-  for (const dir of ['server', 'shared', 'data']) coreFiles.push(...walk(join(ROOT, dir)).map((p) => ({ rel: `${dir}/${p}` })));
+  for (const dir of ['server', 'shared', 'data', 'data-en']) coreFiles.push(...walk(join(ROOT, dir)).map((p) => ({ rel: `${dir}/${p}` })));
   coreFiles.push({ rel: 'package.json' });
   coreFiles.push(...walk(join(ROOT, 'node_modules', 'ws')).map((p) => ({ rel: `node_modules/ws/${p}` })));
   for (const p of walk(join(ROOT, 'public'))) {

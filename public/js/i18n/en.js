@@ -5,6 +5,10 @@
 export const en = {
   // ready buttons (hud / briefing / room)
   ready: 'Ready',
+  'sec.skill': 'Skill',
+  'sec.talent': 'Talent',
+  'sec.effect': 'Effect',
+  'sec.garrison': 'Trait',
   readyUp: 'Ready up',
   readyCancel: 'Unready',
   readyDone: 'Ready',

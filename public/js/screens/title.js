@@ -10,8 +10,10 @@
 
 import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION } from '../../../shared/constants.js';
+import { settingsStore, updateSettings } from '../ui/settings.js';
 import { html, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
+import { t, setLang } from '../i18n.js';
 import { toast } from '../ui/toasts.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual } from '../store.js';
@@ -267,6 +269,11 @@ export function TitleScreen() {
       <div class="title-foot__col">
         <span>非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有</span>
         <span class="title-foot__credit">B 站 纸鸢安好 · UID 99201674 · 安卓端适配参考 B 站 @Ausevay</span>
+      </div>
+      <div class="title-foot__lang" role="radiogroup" aria-label="语言 / Language">
+        ${[['zh', '中文'], ['en', 'EN']].map(([id, label]) => html`<button key=${id} type="button"
+          class=${cx('title-lang-btn', (settingsStore.get().lang || 'zh') === id ? 'is-on' : '')}
+          onClick=${() => { setLang(id); updateSettings({ lang: id }); }}>${label}</button>`)}
       </div>
       <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>
     </footer>

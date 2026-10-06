@@ -192,18 +192,34 @@ test(`${nm('enemy_1175_dushdo_2')}: stealth; next to 深池伙友卫队精英 it
   assert.ok(e.s.interval < base);
 });
 
-for (const key of ['enemy_2034_sythef', 'enemy_2034_sythef_2']) {
-  test(`${nm(key)}: stealth and every attack stuns (Combat.attack@stun s)`, () => {
-    const h = arena({ units: [{ chessId: 't_wall', row: 9, col: 5 }], hooks: ['statusApplied'] });
-    h.step();
-    const e = put(h, key, [9, 5]);
-    assert.ok(e.s.flags.stealth);
-    h.runUntil(() => e.stats.attacks >= 1, 10);
-    const st = statuses(h, h.unit('t_wall').id, 'stun');
-    assert.equal(st.length, 1);
-    approx(st[0].duration, tb(key, 'Combat.attack@stun'));
-  });
-}
+test(`${nm('enemy_2034_sythef')}: stealth and every attack stuns (Combat.attack@stun s)`, () => {
+  const h = arena({ units: [{ chessId: 't_wall', row: 9, col: 5 }], hooks: ['statusApplied'] });
+  h.step();
+  const e = put(h, 'enemy_2034_sythef', [9, 5]);
+  assert.ok(e.s.flags.stealth);
+  h.runUntil(() => e.stats.attacks >= 1, 10);
+  const st = statuses(h, h.unit('t_wall').id, 'stun');
+  assert.equal(st.length, 1);
+  approx(st[0].duration, tb('enemy_2034_sythef', 'Combat.attack@stun'));
+});
+
+// GitHub #214: the 鸭爵 strategy's special 流泪小子 spawns targetable — no 隐匿 — and its attacks still stun
+test(`${nm('enemy_2034_sythef_2')}: no 隐匿 (a ranged operator picks it unblocked), its attacks still stun`, () => {
+  const h = arena({ units: [{ chessId: 't_gun', row: 12, col: 3 }], hooks: ['statusApplied'] });
+  h.step();
+  const e = put(h, 'enemy_2034_sythef_2', [10, 7]);
+  assert.ok(!e.s.flags.stealth, 'the strategy copy carries no 隐匿');
+  h.runUntil(() => e.stats.taken > 0, 5);
+  assert.ok(e.stats.taken > 0, 'selected and damaged while unblocked');
+  checkInvariants(h.b);
+  const h2 = arena({ units: [{ chessId: 't_wall', row: 9, col: 5 }], hooks: ['statusApplied'] });
+  h2.step();
+  const e2 = put(h2, 'enemy_2034_sythef_2', [9, 5]);
+  h2.runUntil(() => e2.stats.attacks >= 1, 10);
+  const st = statuses(h2, h2.unit('t_wall').id, 'stun');
+  assert.equal(st.length, 1);
+  approx(st[0].duration, tb('enemy_2034_sythef_2', 'Combat.attack@stun'));
+});
 
 // ---------------------------------------------------------------------------------------------------------------
 // TIMES 频次

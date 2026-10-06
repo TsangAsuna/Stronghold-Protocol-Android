@@ -2721,7 +2721,9 @@ export const KITS = Object.freeze({
   enemy_9008_acbunn: kitBoneSpike,                                   // 假想敌：骨刺 · stealth; hits 3 targets while stealthed
   enemy_1175_dushdo_2: kitShadowBlade,                               // 深池伙友影刃精英 · stealth; BAT −1.3 s next to 卫队精英
   enemy_2034_sythef: (ab) => [stealth(), onHitStatus('stun', T(ab, 'Combat.attack@stun'))],   // 流泪小子 · stealth, attacks stun
-  enemy_2034_sythef_2: (ab) => [stealth(), onHitStatus('stun', T(ab, 'Combat.attack@stun'))], // 流泪小子 · same
+  // 鸭爵 strategy's special version (the swap's only source): no 隐匿 — the strategy copy is targetable on its way
+  // (GitHub #214: the stealthed swap ran the blue gate with nothing able to pick it); the original keeps its 隐匿.
+  enemy_2034_sythef_2: (ab) => [onHitStatus('stun', T(ab, 'Combat.attack@stun'))],            // 流泪小子 · attacks stun, no 隐匿 (GitHub #214)
 
   // --- TIMES 频次 (hit-count units + their creators)
   enemy_1196_msfyin: kitTimes(),                                     // 木制瑞印 · 2 hits, unblockable

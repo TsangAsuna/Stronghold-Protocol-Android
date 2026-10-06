@@ -66,6 +66,13 @@ import { weightedPick } from './waves.js';
 export const FAMILY_NAMES = { bounty: '悬赏决策', supply: '道具补给', shop: '机密商店', tactic: '战术决策' };
 
 /**
+ * GitHub #212: items a 机密商店 offer set holds at most once of (the 调度中心 has a single item slot, so only a draft
+ * set can repeat one). The officially repeated cards keep their repeats (盟约之币 ×2, 变形同构体 ×2 — the user,
+ * 2026-10-03: "机密商店按官方改成可以重复吧"); 商业包装方案 is the one the issue reported twice in a set.
+ */
+const ONE_PER_SHOP_SET = new Set(['chess_item_5_07_e_a']);
+
+/**
  * Battles a multi-round bounty card lasts (data `rounds` 99, official text "之后 / 后续的<@ba.vdown>每场</>作战":
  * 山海众头目·多轮悬赏, 多轮悬赏·假想敌 ×6, 法术大师A2·多轮战术特训). The user does not remember any multi-round bounty
  * (playtest #6 answer, "我不记得有过多轮悬赏"): until that is confirmed otherwise every such card lasts two battles,
@@ -325,8 +332,9 @@ function bountyDraftCards(gd, rng, n, sch, round) {
 /**
  * The 机密商店 cards (choices.json `shopDraft`, module header): every slot drawn on its own — a tier (or `coin`, the
  * 盟约之币) by the slot's weights, then an item of that tier by `itemWeights` (1 when unlisted; an empty tier falls back to
- * the nearest lower one, then any) — so one item can fill two slots. Positions shuffled; `n` < the slots (solo) keeps
- * `n` of them. Null without a usable `shopDraft` or at a round its `rounds` (when given) does not list.
+ * the nearest lower one, then any) — so one item can fill two slots (ONE_PER_SHOP_SET items: never twice, GitHub #212).
+ * Positions shuffled; `n` < the slots (solo) keeps `n` of them. Null without a usable `shopDraft` or at a round its
+ * `rounds` (when given) does not list.
  */
 export function shopDraftCards(gd, rng, n, round = null) {
   const spec = gd.choices.shopDraft;
@@ -339,13 +347,21 @@ export function shopDraftCards(gd, rng, n, round = null) {
     for (let k = t; k >= 1; k--) if ((gd.shopItemsByTier[k] || []).length) return gd.shopItemsByTier[k];
     return eligibleItems(gd, 1, 6);
   };
+  const weight = (x) => (Object.hasOwn(w, x) ? w[x] : 1);
+  const taken = new Set();
+  const pick = (list) => {
+    const fresh = list.filter((x) => !ONE_PER_SHOP_SET.has(x) || !taken.has(x));
+    const id = weightedPick(rng, (fresh.length ? fresh : list).map((x) => [x, weight(x)]));
+    if (id) taken.add(id);
+    return id;
+  };
   const out = [];
   for (const slot of slots) {
     const kinds = Object.entries(slot).filter(([k]) => k === 'coin' ? !!coin : Number.isInteger(Number(k)));
     const kind = weightedPick(rng, kinds);
     if (kind == null) continue;
     const list = kind === 'coin' ? [coin] : ofTier(Number(kind));
-    const id = weightedPick(rng, list.map((x) => [x, Object.hasOwn(w, x) ? w[x] : 1]));
+    const id = pick(list);
     if (id) out.push(itemCard(gd, id));
   }
   return rng.shuffle(out).slice(0, Math.max(0, n));
@@ -395,7 +411,17 @@ function buildCards(gd, rng, family, n, sch, { stageId = null, bondAvailable = n
     let list = eligibleItems(gd, lo, hi);
     if (!list.length) list = eligibleItems(gd, 1, 6);
     const out = [];
-    for (let i = 0; i < n && list.length; i++) out.push(itemCard(gd, list[Math.floor(rng() * list.length)]));
+    const taken = family === 'shop' ? new Set() : null; // the early 机密商店 (no screenshot): ONE_PER_SHOP_SET once per set too (GitHub #212)
+    for (let i = 0; i < n && list.length; i++) {
+      let pool = list;
+      if (taken) {
+        pool = list.filter((x) => !ONE_PER_SHOP_SET.has(x) || !taken.has(x));
+        if (!pool.length) pool = list;
+      }
+      const id = pool[Math.floor(rng() * pool.length)];
+      if (taken) taken.add(id);
+      out.push(itemCard(gd, id));
+    }
     return out;
   }
   if (family === 'tactic') return tacticDraftCards(gd, rng, n, { stageId, bondAvailable, round });

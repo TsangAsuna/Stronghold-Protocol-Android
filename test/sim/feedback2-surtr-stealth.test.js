@@ -261,7 +261,8 @@ describe('#43: a blocked 隐匿 enemy hides again only 3 s after the block ends 
     assert.ok(h.runUntil(() => !!o.findBuff('ab:veiled'), 30), 'the veil comes');
     assert.equal(o.findBuff('ab:veiled').data.stealthRestore, 0);
     assert.ok(lamp.alive);
-    const ZERO = ['enemy_10031_cnvsld', 'enemy_10034_cnvsax', 'enemy_9008_acbunn', 'enemy_2034_sythef', 'enemy_2034_sythef_2', 'enemy_1389_winbab_2'];
+    // (enemy_2034_sythef_2 has 0 s in the data too, but the 鸭爵 strategy copy spawns with no 隐匿 at all — GitHub #214)
+    const ZERO = ['enemy_10031_cnvsld', 'enemy_10034_cnvsax', 'enemy_9008_acbunn', 'enemy_2034_sythef', 'enemy_1389_winbab_2'];
     const ONE = ['enemy_1283_sgkill', 'enemy_1283_sgkill_2'];
     const PLAIN = ['enemy_1009_lurker', 'enemy_1019_jshoot', 'enemy_1019_jshoot_2', 'enemy_1023_jmage', 'enemy_1299_ymkilr', 'enemy_1299_ymkilr_2', 'enemy_1404_msnip', 'enemy_10042_prtrop', 'enemy_10042_prtrop_2', 'enemy_1175_dushdo_2'];
     for (const [keys, n] of [[ZERO, 0], [ONE, 1], [PLAIN, undefined]]) {

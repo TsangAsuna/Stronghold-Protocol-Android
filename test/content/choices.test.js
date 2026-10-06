@@ -372,7 +372,9 @@ test('机密商店 E2E (solo HARD R11): 3 free normal items of the official comp
   assert.equal(sp.cards.length, 3);
   for (const c of sp.cards) assert.ok(DATA.items[c.id] && !DATA.items[c.id].isGolden && DATA.items[c.id].itemType === 'EQUIP');
   const ps = h.ps('p_0');
-  const card = sp.cards[2].id;
+  // a mergeable card of the draft (GitHub #212: the set no longer holds two 商业包装方案, so the pick is by mergeability)
+  const card = sp.cards.map((c) => DATA.items[c.id]).find((it) => it.mergeable).id;
+  assert.ok(card, 'a mergeable item');
   giveItem(m, ps, card); // an identical normal copy already owned
   const funds = ps.funds;
   draftPicks(h, { p_0: card });

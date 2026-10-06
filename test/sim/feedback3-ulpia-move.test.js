@@ -87,6 +87,26 @@ test('乌尔比安 S3: the 【移动】 and the 【返回】 are free redeploys 
   clean(h);
 });
 
+test('#199 knocked out mid-S3: the body and every redeploy land on the anchor home tile (the marker retires, the tile is freed)', REAL, () => {
+  const h = makeBattle({
+    defs: { enemies: { e_dummy: dummy } },
+    units: [{ chessId: ULP, row: 10, col: 3 }], enemies: [{ key: 'e_dummy', pos: [10, 6] }],
+    bonds: { indomShip: { count: 2, active: true, tier: 1, layers: 300 } }, hooks: ['deploy', 'death'], autoFinish: false, timeLimit: 120,
+  });
+  const b = h.b, u = h.unit(ULP);
+  h.step();
+  u.skill.gainSp(1000);
+  assert.ok(h.runUntil(() => u.skill.active, 2));
+  assert.ok(h.runUntil(() => u.tileC === 6, 3), 'he displaced onto the dummy tile (10,6)');
+  assert.equal(u.mem.anchorHome.marker.alive, true, 'the marker holds (10,3)');
+  b.dealDamage(null, u, { amount: 1e9, type: 'true' });
+  assert.ok(u.alive, '不屈 brought him back at once');
+  assert.equal(u.tileC, 3, 'back on his ORIGINAL tile (10,3), not the displacement tile (10,6)');
+  assert.equal(u.mem.anchorHome, null, 'the anchor is spent');
+  assert.ok(!h.b.allyUnits.some((a) => a !== u && a.kind === 'token' && a.alive && a.tileR === 10 && a.tileC === 3), 'the marker is gone, the tile is his');
+  clean(h);
+});
+
 test('乌尔比安 S3 with 不屈 at 100 %: the moves roll nothing (a 【移动】 is no exit); a knock-out still does', REAL, () => {
   const h = makeBattle({
     defs: { enemies: { e_dummy: dummy } },

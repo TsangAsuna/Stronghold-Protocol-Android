@@ -52,6 +52,4 @@
     <string name="notification_title">卫戍协议 运行中</string>
 
     <string name="notification_content">本地对局模拟引擎正在后台运行</string>
-    <string name="edge_padding_label">异形屏适配：UI 距两侧各 %1$d px（刘海/打孔屏横屏使用）</string>
-    <string name="share_logs">分享日志</string>
 </resources>

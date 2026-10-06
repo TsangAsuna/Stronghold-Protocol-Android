@@ -195,7 +195,7 @@ function rawRouteOf(b, e, tpl) {
   const sig = legSig(e.route.legs);
   for (const r of [...(tpl.routes || []), ...(tpl.extraRoutes || [])]) {
     if (!r) continue;
-    try { if (legSig(compileRoute(normalizeRoute(r), b.rect)) === sig) return r; } catch { /* skip */ }
+    try { if (legSig(compileRoute(normalizeRoute(r), b.rect, e.motion)) === sig) return r; } catch { /* skip */ }
   }
   return null;
 }

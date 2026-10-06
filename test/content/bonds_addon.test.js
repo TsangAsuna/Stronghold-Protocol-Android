@@ -412,6 +412,38 @@ test('突袭 #51: the most advanced enemy out of reach → the jump goes to the 
   checkInvariants(h.b);
 });
 
+// GitHub issue #216: in a 联防 down to one player (the partner quit, its operators knocked out) a 突袭 member jumped
+// to the enemies on the partner's half — the abandoned other map. raidTargets now classifies the candidates by the
+// half the enemy stands on and never raids a half whose owner has no living operator on the field.
+test('突袭 #216: a partner-less 联防 never raids the abandoned half — the own half (or a manned one) only', () => {
+  const defs = { chess: { r_m: op('r_m', ['raidShip']), x_r: op('x_r', []) }, enemies: DUMMY };
+  const idle = bondBb('raidShip').no_attack_duration;
+  const players = (manned) => [
+    { playerId: 'pL', seat: 0, side: 'L', colOffset: 0, units: [{ chessId: 'r_m', row: 12, col: 3 }], bonds: { raidShip: bond(1, 10) } },
+    { playerId: 'pR', seat: 1, side: 'L', colOffset: 8, units: manned ? [{ chessId: 'x_r', row: 12, col: 5 }] : [], bonds: {} },
+  ];
+  const mk = (manned) => makeBattle({
+    kind: 'unite', defs, players: players(manned), hooks: ['deploy', 'death'], autoFinish: false, timeLimit: 120,
+    enemies: [{ key: 'enemy_addon_dummy', pos: [9, 16] }],
+  });
+  // the partner half is abandoned (no living operator of pR): the right-half enemy is no candidate at all
+  const h = mk(false);
+  h.run(idle + 2);
+  const u = h.unit('r_m');
+  assert.deepEqual(raidJumps(h), [], 'no jump onto the abandoned half (idle trigger ran 1.2× over)');
+  assert.deepEqual([u.tileR, u.tileC], [12, 3], 'stays on its own half');
+  // an enemy of its own half: the jump comes at once (the idle time kept counting)
+  const eOwn = h.spawn('enemy_addon_dummy', { pos: [12, 7] });
+  assert.ok(h.runUntil(() => raidJumps(h).length > 0, idle + 1), 'jumped to the own-half enemy');
+  assert.ok(inRange(u, eOwn), `landed on ${u.tileR},${u.tileC} with it in range`);
+  checkInvariants(h.b);
+  // a manned partner half stays raidable while the own half has no enemy (the #51 order: another field's only then)
+  const h2 = mk(true);
+  h2.run(idle + 2);
+  assert.equal(raidJumps(h2).length, 1, 'jumped across to the manned partner half');
+  checkInvariants(h2.b);
+});
+
 test('不屈: knocked-out 地面干员 (melee position) redeploys (p=1 at high L); tier 2 every operator +5 SP; inactive / ranged → no', () => {
   const bb = bondBb('indomShip');
   const sk = { spCost: 50, initSp: 0 };

@@ -288,20 +288,35 @@ function raidTile(battle, u, e, reach) {
 
 /**
  * Jump candidates of player `pid`, in priority order: the ground enemies an operator may target (not flying,
- * canTargetEnemy) — those of the player's own field (`ownerId`), the others only when it has none —, the most advanced
- * first (least remaining path distance, then the earliest spawned) [ASSUMED, research 02 §3.18]. The same list for
- * every member of the player (canTargetEnemy reads the enemy, not the attacker).
+ * canTargetEnemy) — those on the player's own half first (where the enemy stands NOW: a 联防 enemy crosses both halves
+ * while its spawn owner stays the gate half's helper), the other halves only when the own half has none —, the most
+ * advanced first (least remaining path distance, then the earliest spawned) [ASSUMED, research 02 §3.18]. A half whose
+ * owner has no living operator on the field is never raided (GitHub #216: in a 联防 down to one player its enemies
+ * pulled the member onto the abandoned other map). The same list for every member of the player (canTargetEnemy reads
+ * the enemy, not the attacker).
  */
 function raidTargets(battle, u, pid) {
   const own = [], other = [];
+  const manned = new Map();
   for (const e of battle.enemies) {
     if (e.isFlying || !canTargetEnemy(u, e, { canHitFly: false })) continue;
-    (e.ownerId === pid ? own : other).push(e);
+    const halfOwner = battle._ownerForTile([Math.round(e.y), Math.round(e.x)]) ?? e.ownerId;
+    if (halfOwner !== pid && !halfManned(battle, halfOwner, manned)) continue;
+    (halfOwner === pid ? own : other).push(e);
   }
   const list = own.length ? own : other;
   const dist = new Map(list.map((e) => [e, num(battle.remainingDistance ? battle.remainingDistance(e) : 0)]));
   list.sort((a, b) => dist.get(a) - dist.get(b) || a.id - b.id);
   return list;
+}
+
+/** Does `pid` still hold its half — an operator alive on the field, or none left at all (a solo field owns everything)? */
+function halfManned(battle, pid, cache) {
+  if (pid == null) return true;
+  if (!cache.has(pid)) {
+    cache.set(pid, battle.allyUnits.some((a) => a.ownerId === pid && a.alive && a.deployed));
+  }
+  return cache.get(pid);
 }
 
 function raidPoll(battle, st) {

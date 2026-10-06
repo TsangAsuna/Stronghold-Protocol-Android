@@ -134,7 +134,10 @@ const ITEM_HANDLERS = {
     onEquip(ctx, ev) {
       const base = ctx.gd.baseIdOf(ev.target.id);
       const owned = [...ctx.board(), ...ctx.hand(), ...ctx.temp()].filter((p) => p && p.kind === 'chess' && !p.golden && ctx.gd.baseIdOf(p.id) === base).length;
-      if (owned >= 2) { if (ctx.grantChess(base)) return; }
+      // 已拥有至少 2 名该初始干员 ⇒ always that operator, never the 同盟约 roll — even when the shared pool has
+      // no copy left, in which case nothing is granted (GitHub #207: a failed grant used to fall through and hand
+      // out a random same-bond operator).
+      if (owned >= 2) { ctx.grantChess(base); return; }
       const id = rollSameBond(ctx, ctx.pieceBonds(ev.target.uid), 6);
       if (id) ctx.grantChess(id);
     },

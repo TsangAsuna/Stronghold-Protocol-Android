@@ -926,6 +926,20 @@ test('拟态物质: owning 2 copies gives the 3rd (→ elite); otherwise a rando
   cover(A('5_05'), B('5_05'));
 });
 
+test('拟态物质: owning 2 copies with an elite beside them and a drained pool grants nothing — never a 同盟约 operator (GitHub #207)', () => {
+  const { m, ps, equip } = setup({ seed: 9 });
+  const cid = plain((c) => c.tier === 2 && c.bonds.length)[0];
+  const t = give(m, ps, cid, 'hand');
+  give(m, ps, cid, 'hand');
+  // the issue's setup: an elite of the same operator on the field — the rule counts 初始 copies only, so the
+  // "≥ 2 ⇒ that operator" branch still applies; the elite does not turn the grant into the same-bond roll
+  give(m, ps, DATA.chess[cid].goldenId, 'board', [10, 5]);
+  m.pool.take(cid, m.pool.left(cid)); // the shared pool has no copy of the operator left
+  const got = spyGrants(ps);
+  assert.deepEqual(equip(giveItem(m, ps, A('5_05')), t), OK);
+  assert.equal(got.length, 0, 'no operator granted once the pool is dry');
+});
+
 test('博士投影: golden promotes at once; normal stays equipped and promotes at the next round start', () => {
   const { h, m, ps, equip } = setup();
   const cid = plain((c) => c.tier === 2)[0];

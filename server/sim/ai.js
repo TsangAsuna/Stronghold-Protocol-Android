@@ -330,18 +330,33 @@ function doHeal(b, u, prof, t) {
  * Compile a RouteSpec into legs. With `rect`, positional legs are clamped onto the field: a checkpoint outside the
  * rect (e.g. h07_01's extra fly route along row 6) could never be reached because positions are clamped to the rect
  * every tick — the enemy would hover at the border forever instead of finishing its route.
+ * With `motion` FLY every leg stays lattice-aligned (GitHub #208): the official checkpoint lists fly straight lines
+ * between their waypoints, and a few official routes pair waypoints across both axes at once (the escaped_single
+ * unite routes' (9,6)→(12,7), (12,7)→(11,5), (12,4)→(9,3) …) — the flyer would cross the tiles diagonally. Each
+ * such leg is flown as two axis-aligned legs, the row first (along the current column), then the column (along the
+ * target row) — the escaped_multi zigzag's order, so both 联防 templates fly the same lattice.
  */
-export function compileRoute(route, rect = null) {
+export function compileRoute(route, rect = null, motion = null) {
   const legs = [];
   const cr = (r) => (rect ? Math.max(rect.r0, Math.min(rect.r1, r)) : r);
   const cc = (c) => (rect ? Math.max(rect.c0, Math.min(rect.c1, c)) : c);
+  const fly = String(motion ?? '').toUpperCase().startsWith('F');
+  let pr = route.start ? cr(route.start[0]) : null;
+  let pc = route.start ? cc(route.start[1]) : null;
+  const moveTo = (r, c, final = false) => {
+    if (fly && pr != null && r !== pr && c !== pc) legs.push({ t: 'move', r, c: pc }); // row first, then the column
+    const leg = { t: 'move', r, c };
+    if (final) leg.final = true;
+    legs.push(leg);
+    pr = r; pc = c;
+  };
   for (const cp of route.checkpoints || []) {
-    if (cp.type === 'MOVE') legs.push({ t: 'move', r: cr(cp.pos[0]), c: cc(cp.pos[1]) });
+    if (cp.type === 'MOVE') moveTo(cr(cp.pos[0]), cc(cp.pos[1]));
     else if (cp.type === 'WAIT') legs.push({ t: 'wait', time: Number.isFinite(cp.time) ? Math.max(0, cp.time) : 0 });
-    else if (cp.type === 'DISAPPEAR') legs.push({ t: 'disappear' });
-    else if (cp.type === 'APPEAR') legs.push({ t: 'appear', r: cr(cp.pos[0]), c: cc(cp.pos[1]) });
+    else if (cp.type === 'DISAPPEAR') { legs.push({ t: 'disappear' }); pr = null; pc = null; }
+    else if (cp.type === 'APPEAR') { legs.push({ t: 'appear', r: cr(cp.pos[0]), c: cc(cp.pos[1]) }); pr = cr(cp.pos[0]); pc = cc(cp.pos[1]); }
   }
-  if (route.end) legs.push({ t: 'move', r: cr(route.end[0]), c: cc(route.end[1]), final: true });
+  if (route.end) moveTo(cr(route.end[0]), cc(route.end[1]), true);
   return legs;
 }
 

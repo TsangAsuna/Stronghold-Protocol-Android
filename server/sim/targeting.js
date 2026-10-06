@@ -190,6 +190,10 @@ export function sortEnemyTargets(battle, attacker, cands, priority) {
   if (cands.length <= 1) return cands;
   const pf = priority ? (PRIORITY_FNS[priority] || (priority === 'nearest' || priority === 'farthest' ? null : null)) : null;
   const ax = attacker.x, ay = attacker.y;
+  // a SPECIAL priority (优先攻击空中单位 … — PRTS 索敌: 特殊优先级 first) outranks the attacker's own blocked
+  // enemy: a 速狙 blocking a ground enemy still shoots the drone flying past (GitHub #205). nearest / farthest are
+  // no special priority — blocked stays first there, as do the no-priority profiles.
+  const special = !!pf;
   const keyed = cands.map((e) => ({
     e,
     b: e.blockedBy === attacker ? 0 : 1,
@@ -198,7 +202,9 @@ export function sortEnemyTargets(battle, attacker, cands, priority) {
     d: battle.remainingDistance(e),
     s: e.spawnSeq,
   }));
-  keyed.sort((a, b) => a.b - b.b || a.p - b.p || a.t - b.t || a.d - b.d || a.s - b.s);
+  keyed.sort((a, b) => special
+    ? a.p - b.p || a.b - b.b || a.t - b.t || a.d - b.d || a.s - b.s
+    : a.b - b.b || a.p - b.p || a.t - b.t || a.d - b.d || a.s - b.s);
   for (let i = 0; i < keyed.length; i++) cands[i] = keyed[i].e;
   return cands;
 }

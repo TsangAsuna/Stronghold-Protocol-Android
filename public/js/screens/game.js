@@ -890,7 +890,7 @@ function MatchScreen() {
         if (vk) audio.voice(vk, 'place');
       }),
       view.on('pieceDragEnd', (e) => {
-        if (ptr.dragZoomUid !== undefined && !e?.dropped) view.focusTile?.(null); // a cancelled item drag restores
+        if (ptr.dragZoomUid !== undefined) view.focusTile?.(null); // the release restores at once — equip or cancel alike
         ptr.dragZoomUid = undefined;
         itemDragRef.current = false;
         // a cancelled drag (no pieceDrop) must not leave the highlights behind; a release on a tile that takes nothing

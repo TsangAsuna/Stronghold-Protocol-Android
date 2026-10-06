@@ -18,13 +18,13 @@
     <string name="btn_host">开始游戏（本机开服）</string>
     <string name="btn_join">加入同一 Wi-Fi 的对局（客机）</string>
     <string name="host_hint_no_lan">未检测到局域网地址（未联网也可以单机游玩）。</string>
-    <string name="host_hint">朋友的浏览器打开 %1$s 即可加入（无需安装 App）；同装本 App 的客机用「加入对局」自动发现。</string>
+    <string name="host_hint">朋友的浏览器打开 %1$s 即可加入（无需安装 App）；同装本 App 的客机用「加入对局」自动发现。跨网联机：在任一联网电脑上运行 easyfrp / frp 把该地址穿透出去，朋友填穿透后的地址。</string>
 
     <string name="join_discovered">已发现的房主（自动搜索中）：</string>
     <string name="join_refresh">↻ 重新搜索</string>
     <string name="join_manual_label">或手动输入房主地址：</string>
-    <string name="join_manual_hint">192.168.x.x:3000</string>
-    <string name="join_hint">客机也可以不装 App：直接用浏览器打开房主屏幕上显示的地址。开虚拟局域网（UU 加速器 / Tailscale 等）时请用手动输入。</string>
+    <string name="join_manual_hint">192.168.x.x:3000 或 房主域名:端口</string>
+    <string name="join_hint">客机也可以不装 App：直接用浏览器打开房主屏幕上显示的地址。虚拟局域网（UU 加速器 / Tailscale）或内网穿透（frp / easyfrp）的地址直接手动输入即可——支持任意 IP 或域名加端口。</string>
 
     <string name="overlay_title">加载异常</string>
     <string name="overlay_reload">重新加载</string>

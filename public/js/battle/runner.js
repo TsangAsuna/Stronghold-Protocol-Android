@@ -68,6 +68,19 @@ import { unitStatsEntry, fxForm } from '../../../shared/protocol.js';
 import { spectateEffects } from './observe.js';
 
 const TICK = 1 / 30;
+/**
+ * How long the battle-open presentation keeps the sim clock from ticking (see render/app.js
+ * landingPlan): the board hides, every operator lands one by one (300 ms lead-in + 220 ms per
+ * unit), then the round's route current sweeps once (~2 s). Scaled by the spec's initial unit
+ * count so a full board never gets overtaken by the presentation — enemies spawning before the
+ * last operator lands reads as lost damage (they walk while nobody blocks). The server's
+ * Match._launch shifts a server-run field's startAt by the same formula.
+ */
+export function openPresentationMs(spec) {
+  if (process.env?.SP_PRESENT_MS != null) return Number(process.env.SP_PRESENT_MS) || 0; // tests / headless
+  const n = (spec?.players || []).reduce((s, p) => s + (Array.isArray(p?.units) ? p.units.length : 0), 0);
+  return 2800 + Math.min(20, n) * 220;
+}
 /** Fast-forward budget per frame (ticks) when far behind. */
 export const CATCHUP_TICKS = 240;
 /** Silent catch-up slice (ticks) while a new battle is prepared before it is shown. */
@@ -662,8 +675,10 @@ export function createBattleRunner(deps) {
       battleId: msg.battleId, fieldId: msg.fieldId || msg.spec.fieldId, kind: msg.kind || msg.spec.kind, spec: msg.spec, sim, battle,
       authoritative: !!msg.authoritative, watch: !!msg.watch, own: !msg.watch, speed,
       members: (msg.spec.players || []).map((p) => p && p.playerId).filter(Boolean),
-      // 准备就绪后先逐个落地+路线电流（渲染层 ~2 s），模拟时钟延后启动——怪在演出之后才出
-      t0: clock() + ((Number(msg.elapsed) || 0) ? 0 : 2600) - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
+      // 准备就绪后先逐个落地 + 路线电流（~0.3s 起落间隔 + 220ms/人 + ~2s 扫过），模拟时钟按
+      // 演出总时长延后启动——怪在演出之后才出；固定 2.6s 会在人多时被演出反超（没落完就出怪）
+      t0: clock() + ((Number(msg.elapsed) || 0) ? 0 : openPresentationMs(msg.spec))
+        - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
       result: null, delivery: null,
       meter: sim.spec.attachLpMeter(battle),
       // counted leaks so far (normal fields; noteLeaks) and the Battle state they were counted at; 联防 fields: each

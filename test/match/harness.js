@@ -1,3 +1,4 @@
+process.env.SP_PRESENT_MS = '0'; // tests drive real time — skip the battle-open presentation hold
 // test/match/harness.js — helpers for the match-engine tests (test/match/*.test.js).
 //
 //   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 7, fake: true });

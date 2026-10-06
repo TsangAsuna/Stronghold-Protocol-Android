@@ -2291,7 +2291,18 @@ export class Match {
   _launch(fields) {
     const now = this.sched.now();
     this.fields = fields;
-    for (const f of fields) { f.startAt = now; f.lastProgressAt = now; }
+    // the battle-open presentation (render/app.js landingPlan: operators land one by one, then the
+    // round's route current sweeps) holds the client sim clock openPresentationMs(spec) past
+    // construction — shifting startAt by the same formula keeps a server-run field's first spawn,
+    // and every deadline derived from startAt, behind the presentation; _fieldElapsed clamps at 0
+    // meanwhile, so replicas read elapsed 0 and hold on their own (battle/runner.js). Client-combat
+    // fields step on the authority's clock, but the shifted startAt still moves their deadline right.
+    const presentOverride = Number(process.env.SP_PRESENT_MS ?? NaN);
+    for (const f of fields) {
+      const n = (f.spec?.players || []).reduce((acc, p) => acc + (Array.isArray(p?.units) ? p.units.length : 0), 0);
+      f.startAt = now + (Number.isFinite(presentOverride) ? presentOverride : 2800 + Math.min(20, n) * 220);
+      f.lastProgressAt = now;
+    }
     for (const f of fields) {
       const auth = this._authorityFor(f);
       if (auth) this._assignClient(f, auth);

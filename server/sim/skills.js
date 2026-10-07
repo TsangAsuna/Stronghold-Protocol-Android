@@ -32,9 +32,11 @@
 // Automatic operations cool down (constants.js AUTO_OP_COOLDOWN, "自动操作具有3s冷却，在完成一次操作或作战开始时部署的单位
 //   将进入冷却"): the engine auto-casts a MANUAL skill (def.skillType) no sooner than 3 s after its previous cast (so a
 //   charged skill spends its charges 3 s apart) or after the unit's deployment at the battle start (Battle._deploy
-//   `initial`). AUTO skills are exempt; a kit with its own automatic cast checks `opCooling`; a cast made by activate()
-//   directly is not held back (it still starts the cooldown). While a cast "next attack" waits for its attack, no
-//   further charge is cast.
+//   `initial`). An AUTO skill whose rule is a tick rule (SP_FULL / SEARCH / … — casts with no attack to pace them) enters
+//   the same cooldown (GitHub #298: fed SP otherwise re-fires it every tick); an attack-bound AUTO skill (DEFAULT) stays
+//   exempt — its cadence is the attack cycle. A kit with its own automatic cast checks `opCooling`; a cast made by
+//   activate() directly is not held back (it still starts the cooldown). While a cast "next attack" waits for its
+//   attack, no further charge is cast.
 // Kinds: duration (mods for `duration` s), ammo (mods until `ammo` attacks were made; optional duration cap),
 //   instant (onStart + optional one-shot attack override for the next attack), charges (= instant with charges),
 //   passive (always on from deployment, no SP), toggle (stays on until death once activated).
@@ -363,8 +365,15 @@ export class SkillRuntime {
     }
   }
 
-  /** The automatic operations of a MANUAL skill are cooling down (AUTO_OP_COOLDOWN). */
-  _opCooling() { return this.manual && this.battle.time < this.opReadyAt - 1e-9; }
+  /**
+   * The automatic operations are cooling down (AUTO_OP_COOLDOWN): every MANUAL skill's, and — since the tick-rule casts
+   * of an AUTO skill have no attack to pace them (GitHub #298) — an AUTO skill whose rule is a tick rule's too. An
+   * attack-bound AUTO skill (DEFAULT) keeps its attack-cycle cadence.
+   */
+  _opCooling() {
+    if (!this.manual && !TICK_RULES.has(this.rule)) return false;
+    return this.battle.time < this.opReadyAt - 1e-9;
+  }
 
   /** Public form of the operation cooldown, for kits with their own automatic cast of a MANUAL skill. */
   get opCooling() { return this._opCooling(); }
@@ -478,7 +487,7 @@ export class SkillRuntime {
     this.activations++;
     this.lastStart = this.battle.time;
     const b = this.battle;
-    if (this.manual) this.opReadyAt = b.time + AUTO_OP_COOLDOWN;
+    if (this.manual || TICK_RULES.has(this.rule)) this.opReadyAt = b.time + AUTO_OP_COOLDOWN;
     if (this.isTimed) {
       this.active = true;
       this.timeLeft = this.kind === 'duration' ? Math.max(0.01, this.duration) : (this.kind === 'ammo' && this.duration > 0 ? this.duration : Infinity);

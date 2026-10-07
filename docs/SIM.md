@@ -913,7 +913,10 @@ instance) and skip `'counter'` / `'reflect'` damage. When the guard trips, the l
   "自动操作具有3s冷却，在完成一次操作或作战开始时部署的单位将进入冷却"): a MANUAL skill is auto-cast no sooner than 3 s
   after its previous cast (a charged skill spends its charges 3 s apart) or after its battle-start deployment
   (`Battle._deploy` initial; `battle.flags.startOpCooldown`, default 3 — the test harness sets 0 unless told otherwise);
-  AUTO skills are exempt; kits with their own automatic cast of a MANUAL skill check `skill.opCooling` (波登可 S1, 雪猎
+  an AUTO skill whose rule is a tick rule enters the same cooldown since GitHub #298 — its "immediately" casts have no
+  attack to pace them, so SP fed faster than the skill spends it (华法琳's kill-fed 技力) re-fired 引星棘刺 S1 every tick —
+  while an attack-bound AUTO skill (DEFAULT) stays exempt (its cadence is the attack cycle); kits with their own automatic
+  cast of a MANUAL skill check `skill.opCooling` (波登可 S1, 雪猎
   special bullets, 流形 copy). While a cast "next attack" (instant / charges with an attack override) waits for its
   attack, no further charge is cast. `gainSp` is ignored while a duration/ammo/toggle skill
   runs (its bar shows the skill), whatever the reason, and — any reason but `'init'` — while the unit has the `noSp`
